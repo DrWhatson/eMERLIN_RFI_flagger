@@ -25,9 +25,9 @@ class VisData:
 
     def get_start_time(self):
         self.start_time = self.hdu[5].data.TIME[0]
-        self.obs_date_str = self.hdu[5].data.field('DATE-OBS')
-        self.obs_RA = self.hdu[5].data.CRVAL5
-        self.obs_DEC = self.hdu[5].data.CRVAL6
+        self.obs_date_str = self.hdu[5].header['DATE-OBS']
+        self.obs_RA = self.hdu[5].header['CRVAL5']
+        self.obs_DEC = self.hdu[5].header['CRVAL6']
 
         yr,mn,dy = self.obs_date_str.split('-')
         self.obs_JD = sum(jdcal.gcal2jd(yr,mn,dy))
@@ -56,97 +56,104 @@ class VisData:
         pnames = ['UU---SIN','VV---SIN','WW---SIN',
                   'DATE','DATE','BASELINE','SOURCE',
                   'FREQSEL','INTTIM','CORR-ID']
-        pdata = [0.,0.,0.,self.JD_obs,0.,0.,0.,0.,0.,0.]
+        pdata = [0.,0.,0.,self.obs_JD,0.,0.,0.,0.,0.,0.]
         
         gdata = fits.GroupData(imdata,parnames=pnames,
                                pardata=pdata,bitpix=-32)
         
-        prihdu = fits.GroupHDU(gdata)
+        prihdu = fits.GroupsHDU(gdata)
 
-        prihdu.set('BLOCKED',value=True,comment='Tape may be blocked')
-        prihdu.set('OBJECT',value='MULTI',comment='Source name')
-        prihdu.set('TELESCOP',value='e-MERLIN',comment=' ')
-        prihdu.set('INSTRUME',value='VLBA',comment=' ')
-        prihdu.set('OBSERVER',value='Calibrat',comment=' ')
-        prihdu.set('DATE-OBS',value=self.obs_date_str,
+        prihdu.header.set('BLOCKED',value=True,comment='Tape may be blocked')
+        prihdu.header.set('OBJECT',value='MULTI',comment='Source name')
+        prihdu.header.set('TELESCOP',value='e-MERLIN',comment=' ')
+        prihdu.header.set('INSTRUME',value='VLBA',comment=' ')
+        prihdu.header.set('OBSERVER',value='Calibrat',comment=' ')
+        prihdu.header.set('DATE-OBS',value=self.obs_date_str,
                    comment='Obs start date YYYY-MM-DD')
 
-        prihdu.set('BSCALE',value=1.0E0,
+        prihdu.header.set('BSCALE',value=1.0E0,
                    comment='REAL = TAPE * BSCALE + BZERO')
-        prihdu.set('BZERO',value=0.0E0,comment=' ')
-        prihdu.set('BUNIT',value='UNCALIB',comment='Units of flux')
+        prihdu.header.set('BZERO',value=0.0E0,comment=' ')
+        prihdu.header.set('BUNIT',value='UNCALIB',comment='Units of flux')
 
-        prihdu.set('EQUINOX',value=2.0E3,comment='Epoch of RA DEC')
-        prihdu.set('ALTRPIX'value=1.0E+0,
+        prihdu.header.set('EQUINOX',value=2.0E3,comment='Epoch of RA DEC')
+        prihdu.header.set('ALTRPIX',value=1.0E+0,
                    comment='Altenate FREQ/VEL ref pixel')
         
-        prihdu.set('OBSRA',value=self.obs_RA,
+        prihdu.header.set('OBSRA',value=self.obs_RA,
                     comment='Antenna pointing RA')
-        prihdu.set('OBSDEC',value=self.obs_DEC,
+        prihdu.header.set('OBSDEC',value=self.obs_DEC,
                     comment='Antenna pointing DEC')
     
-        prihdu.set('CRVAL2',value=1.0E+0,comment=' ') 
-        prihdu.set('CDELT2',value=1.0E+0,comment=' ') 
-        prihdu.set('CRPIX2',value=1.0E+0,comment=' ') 
-        prihdu.set('CROTA2',value=0.0E+0,comment=' ') 
+        prihdu.header.set('CRVAL2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA2',value=0.0E+0,comment=' ') 
 
-        prihdu.set('CRVAL3',value=-1.0E+0,comment=' ') 
-        prihdu.set('CDELT3',value=-1.0E+0,comment=' ') 
-        prihdu.set('CRPIX3',value=1.0E+0,comment=' ') 
-        prihdu.set('CROTA3',value=0.0E+0,comment=' ') 
+        prihdu.header.set('CRVAL3',value=-1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT3',value=-1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX3',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA3',value=0.0E+0,comment=' ') 
 
-        prihdu.set('CRVAL4',value=self.freq,comment=' ') 
-        prihdu.set('CDELT4',value=self.dfrq,comment=' ') 
-        prihdu.set('CRPIX4',value=self.pfrq,comment=' ') 
-        prihdu.set('CROTA4',value=0.0E+0,comment=' ') 
+        prihdu.header.set('CRVAL4',value=self.freq,comment=' ') 
+        prihdu.header.set('CDELT4',value=self.dfrq,comment=' ') 
+        prihdu.header.set('CRPIX4',value=self.pfrq,comment=' ') 
+        prihdu.header.set('CROTA4',value=0.0E+0,comment=' ') 
 
-        prihdu.set('CRVAL5',value=1.0E+0,comment=' ') 
-        prihdu.set('CDELT5',value=1.0E+0,comment=' ') 
-        prihdu.set('CRPIX5',value=1.0E+0,comment=' ') 
-        prihdu.set('CROTA5',value=0.0E+0,comment=' ') 
+        prihdu.header.set('CRVAL5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA5',value=0.0E+0,comment=' ') 
 
-        prihdu.set('CRVAL6',value=self.obs_RA,comment=' ') 
-        prihdu.set('CDELT6',value=1.0E+0,comment=' ') 
-        prihdu.set('CRPIX6',value=1.0E+0,comment=' ') 
-        prihdu.set('CROTA6',value=0.0E+0,comment=' ') 
+        prihdu.header.set('CRVAL6',value=self.obs_RA,comment=' ') 
+        prihdu.header.set('CDELT6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA6',value=0.0E+0,comment=' ') 
 
-        prihdu.set('CRVAL7',value=self.obs_DEC,comment=' ') 
-        prihdu.set('CDELT7',value=1.0E+0,comment=' ') 
-        prihdu.set('CRPIX7',value=1.0E+0,comment=' ') 
-        prihdu.set('CROTA7',value=0.0E+0,comment=' ') 
+        prihdu.header.set('CRVAL7',value=self.obs_DEC,comment=' ') 
+        prihdu.header.set('CDELT7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA7',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL1',value=1./self.freq,comment=' ') 
-        prihdu.set('PZERO1',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL1',value=1./self.freq,comment=' ') 
+        prihdu.header.set('PZERO1',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL2',value=1./self.freq,comment=' ') 
-        prihdu.set('PZERO2',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL2',value=1./self.freq,comment=' ') 
+        prihdu.header.set('PZERO2',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL2',value=1./self.freq,comment=' ') 
-        prihdu.set('PZERO2',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL3',value=1./self.freq,comment=' ') 
+        prihdu.header.set('PZERO2',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL3',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO3',value=self.JD_obs,comment=' ') 
+        prihdu.header.set('PSCAL4',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO3',value=self.obs_JD,comment=' ') 
 
-        prihdu.set('PSCAL4',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO4',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO4',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL5',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO5',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO6',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL6',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO6',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO7',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL7',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO7',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL8',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO8',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL8',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO8',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL9',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO9',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL9',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO9',value=0.0E+0,comment=' ') 
+        prihdu.header.set('PSCAL10',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO10',value=0.0E+0,comment=' ') 
 
-        prihdu.set('PSCAL10',value=1.0E+0,comment=' ') 
-        prihdu.set('PZERO10',value=0.0E+0,comment=' ') 
+        src = []
+        subary =[]
+        frqid = []
+        ifs = []
+        chans = []
+        pflags = []
+        reasons = []
+        ants = []
+        timrng = []
 
         for i in range(len(self.bl)):
           a1,a2 = self.base_name[self.bl[i]]
@@ -155,6 +162,7 @@ class VisData:
           print i, a1,a2,ant1,ant2
           if self.amp[i].shape[0]==0:
             continue
+
 
           ix,iy = np.where(np.transpose(self.flg[i])==0)  
           ixu = np.unique(ix)  
@@ -181,6 +189,8 @@ class VisData:
                 timrng.append([t1,t2])
                 prek += dk
 
+
+        print len(src)
 
         col1 = fits.Column(name='SOURCE',format='1J',unit=' ',
                            array=src)
@@ -209,7 +219,7 @@ class VisData:
         fg_hdu.header.set('EXTVER',value=1,
                           comment='Version number of table')
 
-        hdulist = fits.HDUList([prihud,fg_hdu])
+        hdulist = fits.HDUList([prihdu,fg_hdu])
         hdulist.writeto('Test_Flags.fits')
 
 def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
