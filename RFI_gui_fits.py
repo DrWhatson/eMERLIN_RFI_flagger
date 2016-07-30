@@ -319,6 +319,27 @@ class RFI_Window(wx.Window):
 
         self.draw()
 
+    def flag_dropout(self, thres=90.0):
+
+    # Clean bits of spectrum
+        cb = [(1000,1300),(1400,1650),(2200,2500),(3000,3150),(3250,3400)] 
+        
+        cb_index = []
+        for i in np.arange(len(cb)):
+            cb_index.append(np.arange(cb[i][0],cb[i][1]))
+
+        bl = self.baseline
+
+        cb_index = np.concatenate(cb_index)
+        amp0 = np.median(uv.amp[bl][:,cb_index,0],axis=1)
+        amp1 = np.median(uv.amp[bl][:,cb_index,1],axis=1)
+
+        thres0 = np.percentile(amp0,thres)
+        thres1 = np.percentile(amp1,thres)
+
+        uv.dflg[bl] = np.where((amp0[:,np.newaxis]<thres0/3),0,1) 
+        uv.dflg[bl][:,:] *= np.where((amp1[:,np.newaxis]<thres1/3),0,1) 
+
 
     def smooth(self,e,sig,ndx=25): 
         x = np.arange(-ndx,ndx+1)
@@ -326,13 +347,15 @@ class RFI_Window(wx.Window):
         r2 = x**2 + y**2
         g = np.exp(-r2/2/sig**2)
         
-        w   = 1./e**2
+        w   = 1./e**2 * uv.dflg[self.baseline]
         smo = smooth.weighted(e,w,g)
         
         return smo
 
     def set_baseline(self,bl):
         self.baseline = bl
+        self.flag_dropout()
+
         self.rms_smooth_rr = self.smooth(uv.err[self.baseline][:,:,0],self.sig)
         self.rms_smooth_ll = self.smooth(uv.err[self.baseline][:,:,1],self.sig)
 #        self.amp_smooth = self.smooth(uv.amp[self.baseline][:,:,1],self.sig)
@@ -368,7 +391,11 @@ class RFI_Window(wx.Window):
 
     def apply_thres(self):
         bl = self.baseline
-        uv.flg[bl][:,:]  = np.where(uv.err[bl][:,:,0]/self.rms_smooth_rr>self.rms_thres[bl],0,1)
+                
+        uv.flg[bl][:,:] = 1
+        uv.flg[bl][:,:] *= uv.dflg[bl]
+        
+        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,0]/self.rms_smooth_rr>self.rms_thres[bl],0,1)
         uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,1]/self.rms_smooth_ll>self.rms_thres[bl],0,1)
         med_amp_rr = np.median(uv.amp[bl][:,:,0]*uv.flg[bl])
         med_amp_ll = np.median(uv.amp[bl][:,:,1]*uv.flg[bl])
