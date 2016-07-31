@@ -184,7 +184,7 @@ class File_Panel(wx.Panel):
         filename = saveFileDialog.GetPath()
         pf = open(filename,'wb')
 
-        smo_val = self.parent.controls.smoothing_panel.smooth_slider.GetValue()/10.
+        smo_val = 10.0
         pic.dump(smo_val,pf)
 
         rms_thres = self.parent.rfi_Window.rms_thres
@@ -225,10 +225,6 @@ class File_Panel(wx.Panel):
         val = amp_thres[bl]
         self.parent.controls.threshold_panel.amp_thres_text.SetLabel("Amp threshold %2.2f" % val)
         self.parent.controls.threshold_panel.amp_slider.SetValue(val*100)
-
-        self.parent.controls.smoothing_panel.smooth_text.SetLabel("%2.1f" % smo_val)
-        self.parent.controls.smoothing_panel.smooth_slider.SetValue(smo_val*10)        
-        self.parent.rfi_Window.set_smoothing_scale(smo_val)
 
 class Flags_Panel(wx.Panel):
     def __init__(self, *args, **kwargs):
@@ -363,7 +359,6 @@ class RFI_Window(wx.Window):
         self.repaint()
 
     def do_smoothing_with_flags(self):
-        self.sig = smooth
         self.rms_smooth_rr = self.smooth(uv.err[self.baseline][:,:,0],self.sig,apply_flags=True)
         self.rms_smooth_ll = self.smooth(uv.err[self.baseline][:,:,1],self.sig,apply_flags=True)
 #        self.amp_smooth = self.smooth(uv.amp[self.baseline][:,:,1],self.sig)
