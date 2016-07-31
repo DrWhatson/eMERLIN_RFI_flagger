@@ -97,28 +97,18 @@ class Smoothing_Panel(wx.Panel):
         self.parent = args[0]
         self.rfi_Window = self.parent.rfi_Window
 
-        self.heading = wx.StaticText(self,label='Smoothing scale',pos=(30,0))
+        self.heading = wx.StaticText(self,label='Iterate Smoothing',pos=(30,0))
 
-        self.smooth_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,20),size=(150,20))
-        self.smooth_slider.SetMax(200)
-        self.smooth_slider.SetPageSize(1)
-        self.smooth_slider.SetValue(100)
-        self.smooth_slider.Bind(wx.EVT_SCROLL, self.smooth_Slider_Handler)
-
-        smooth_val = self.smooth_slider.GetValue()
-        self.smooth_text = wx.StaticText(self,label="%2.1f" % (smooth_val/10.), pos=(10,40))
+        smooth_val = 10.0
 
         self.go_Button = wx.Button(self,-1,'Set',pos=(70,50),size=(40,25))
-        self.go_Button.Bind(wx.EVT_BUTTON,self.set_smoothing_scale)
+        self.go_Button.Bind(wx.EVT_BUTTON,self.do_smoothing)
+
+    def do_smoothing(self,evt):
+        self.rfi_Window.do_smoothing_with_flags()
+
+
         
-    def smooth_Slider_Handler(self,evt):
-        val = self.smooth_slider.GetValue()/10.
-        self.smooth_text.SetLabel("%2.1f" % val)
-
-    def set_smoothing_scale(self,evt):
-        val = self.smooth_slider.GetValue()/10.
-        self.rfi_Window.set_smoothing_scale(val)
-
 
 class Threshold_Panel(wx.Panel):
     def __init__(self, *args, **kwargs):
@@ -298,7 +288,7 @@ class RFI_Window(wx.Window):
     def __init__(self, *args, **kwargs):
         wx.Window.__init__(self, *args, **kwargs)
 
-        self.baseline = 0
+        self.baseline = 1
 
         nbas = len(uv.amp)        
         self.rms_thres = np.zeros(nbas,'f')
@@ -341,13 +331,17 @@ class RFI_Window(wx.Window):
         uv.dflg[bl][:,:] *= np.where((amp1[:,np.newaxis]<thres1/3),0,1) 
 
 
-    def smooth(self,e,sig,ndx=25): 
+    def smooth(self,e,sig,ndx=25,apply_flags=False): 
         x = np.arange(-ndx,ndx+1)
         y = x[:,np.newaxis]
         r2 = x**2 + y**2
         g = np.exp(-r2/2/sig**2)
         
-        w   = 1./e**2 * uv.dflg[self.baseline]
+        w   = 1./e**2 * uv.dflg[self.baseline] 
+
+        if apply_flags:
+            w *= uv.flg[self.baseline]
+
         smo = smooth.weighted(e,w,g)
         
         return smo
@@ -368,10 +362,10 @@ class RFI_Window(wx.Window):
         self.draw()
         self.repaint()
 
-    def set_smoothing_scale(self,smooth):
+    def do_smoothing_with_flags(self):
         self.sig = smooth
-        self.rms_smooth_rr = self.smooth(uv.err[self.baseline][:,:,0],self.sig)
-        self.rms_smooth_ll = self.smooth(uv.err[self.baseline][:,:,1],self.sig)
+        self.rms_smooth_rr = self.smooth(uv.err[self.baseline][:,:,0],self.sig,apply_flags=True)
+        self.rms_smooth_ll = self.smooth(uv.err[self.baseline][:,:,1],self.sig,apply_flags=True)
 #        self.amp_smooth = self.smooth(uv.amp[self.baseline][:,:,1],self.sig)
         self.apply_thres()
         self.draw()
