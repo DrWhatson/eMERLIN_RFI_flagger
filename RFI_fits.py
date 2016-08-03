@@ -63,7 +63,7 @@ class VisData:
         for i in range(len(self.flg)):
             self.flg[i][:,:] = 1
 
-    def write_flag_table(self):
+    def write_flag_table(self,flg_dir=''):
         """Append flags into new FG fits file"""
 
         imdata = np.zeros((1,1,1,8,512,4,3))
@@ -298,7 +298,7 @@ class VisData:
 
         hdulist = fits.HDUList([prihdu,fg_hdu])
 
-        outfile = 'Flags_%s.fits' % self.source
+        outfile = flg_dir+'Flags_%s.fits' % self.source
 
         hdulist.writeto(outfile)
 
