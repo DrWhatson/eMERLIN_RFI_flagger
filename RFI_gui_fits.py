@@ -1,4 +1,6 @@
 import numpy as np
+import numpy.ma as ma
+from scipy.interpolate import UnivariateSpline
 import wx
 import wx.lib.buttons as buttons
 
@@ -16,7 +18,7 @@ import smooth
 import cPickle as pic
 import sys
 
-global uv,baseline
+global uv,baseline,bp_window
 
 
 class Baseline_Panel(wx.Panel):
@@ -78,6 +80,7 @@ class Baseline_Panel(wx.Panel):
         base_name = "%i %s-%s" % (bl,a1,a2)
         self.baseText.SetLabel(base_name)
         self.rfi_Window.set_baseline(bl)
+        bp_window.set_baseline(bl)
 
     def set_pol(self,evt):
         btn = evt.GetEventObject()
@@ -97,11 +100,11 @@ class Smoothing_Panel(wx.Panel):
         self.parent = args[0]
         self.rfi_Window = self.parent.rfi_Window
 
-        self.heading = wx.StaticText(self,label='Iterate Smoothing',pos=(30,0))
+        self.heading = wx.StaticText(self,label='Smoothing',pos=(20,0))
 
-        smooth_val = 10.0
+        smooth_val = 1.0
 
-        self.go_Button = wx.Button(self,-1,'Set',pos=(70,50),size=(40,25))
+        self.go_Button = wx.Button(self,-1,'Set',pos=(40,20),size=(30,20))
         self.go_Button.Bind(wx.EVT_BUTTON,self.do_smoothing)
 
     def do_smoothing(self,evt):
@@ -116,9 +119,9 @@ class Threshold_Panel(wx.Panel):
         self.parent = args[0]
         self.rfi_Window = self.parent.rfi_Window
 
-        self.heading = wx.StaticText(self,label='Threshold levels',pos=(30,0))
+        self.heading = wx.StaticText(self,label='Threshold levels',pos=(20,0))
 
-        self.rms_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,20),size=(400,20))
+        self.rms_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,20),size=(300,20))
         self.rms_slider.SetMax(1000)
         self.rms_slider.SetPageSize(5)
         self.rms_slider.SetValue(200)
@@ -128,7 +131,7 @@ class Threshold_Panel(wx.Panel):
         self.rms_thres_text = wx.StaticText(self,label="RMS threshold %2.2f" % (rms_thres/100.), pos=(20,40))
 
  
-        self.amp_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,50),size=(400,20))
+        self.amp_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,50),size=(300,20))
         self.amp_slider.SetMax(2000)
         self.amp_slider.SetPageSize(10)
         self.amp_slider.SetValue(1000)
@@ -245,34 +248,48 @@ class Controls():
     def __init__(self,parent):
         self.parent = parent
 
-        sizer = wx.BoxSizer(wx.HORIZONTAL)
+        global bp_window
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer2 = wx.BoxSizer(wx.HORIZONTAL)
 
         self.baseline_panel = Baseline_Panel(parent)
         self.smoothing_panel = Smoothing_Panel(parent)
         self.threshold_panel = Threshold_Panel(parent)
         self.file_panel = File_Panel(parent)
         self.flags_panel = Flags_Panel(parent)
+        self.bp_window = bp_window
 
-        sizer.Add(self.baseline_panel,1,wx.EXPAND)
-        sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
-        sizer.Add(self.smoothing_panel,2,wx.EXPAND)
-        sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
+        sizer.Add(self.bp_window,1,wx.EXPAND)
+        sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_HORIZONTAL),1,wx.EXPAND)
         sizer.Add(self.threshold_panel,2,wx.EXPAND)
-        sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
-        sizer.Add(self.file_panel,2,wx.EXPAND)
-        sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
-        sizer.Add(self.flags_panel,2,wx.EXPAND)
+        sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_HORIZONTAL),1,wx.EXPAND)
+
+        sizer2.Add(self.baseline_panel,1,wx.EXPAND)
+        sizer2.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
+        sizer2.Add(self.smoothing_panel,2,wx.EXPAND)
+        sizer2.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
+        sizer2.Add(self.file_panel,2,wx.EXPAND)
+        sizer2.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
+        sizer2.Add(self.flags_panel,2,wx.EXPAND)
+
+        sizer.Add(sizer2,2,wx.EXPAND)
+        sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_HORIZONTAL),1,wx.EXPAND)
 
         self.sizer = sizer
 
 class RFI_Frame(wx.Frame):
+
     def __init__(self, *args, **kwargs):
         wx.Frame.__init__(self, *args, **kwargs)
         
+        global bp_window 
+        
+        bp_window = BPass_Window(self)
         self.rfi_Window = RFI_Window(self)
         self.controls = Controls(self)
 
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer = wx.BoxSizer(wx.HORIZONTAL)
         sizer.Add(self.rfi_Window,0,wx.EXPAND)
         sizer.Add(self.controls.sizer,0,wx.EXPAND)
 
@@ -296,7 +313,7 @@ class RFI_Window(wx.Window):
         self.rms_smooth = self.smooth(uv.err[self.baseline][:,:,1],self.sig)
         self.amp_smooth = self.smooth(uv.amp[self.baseline][:,:,1],self.sig)
 
-        self.figure = Figure(figsize=(12,7.5),dpi=100)
+        self.figure = Figure(figsize=(10,6),dpi=100)
         self.canvas = FigureCanvasWxAgg(self,-1,self.figure)
 
         main_box = wx.BoxSizer(wx.HORIZONTAL)
@@ -377,6 +394,7 @@ class RFI_Window(wx.Window):
         self.apply_thres()
         self.draw()
         self.repaint()
+        
 
     def apply_thres(self):
         bl = self.baseline
@@ -393,6 +411,9 @@ class RFI_Window(wx.Window):
 
 
     def draw(self):
+        
+        global bp_window
+        
         bl = self.baseline
         pol = self.pol
         print bl
@@ -410,9 +431,86 @@ class RFI_Window(wx.Window):
         vmax = np.max(uv.amp[bl][:,:,pol]*uv.flg[bl])
         self.imshow.set_clim(vmin=vmin,vmax=vmax)
 
+        bp_window.draw()
+
+
     def repaint(self):
+
+        global bp_window
+
         print self.baseline
         self.canvas.draw()
+
+        bp_window.repaint()
+
+
+class BPass_Window(wx.Window):
+    
+    def __init__(self, *args, **kwargs):
+        wx.Window.__init__(self, *args, **kwargs)
+
+        self.baseline = 1
+        self.pol = 0
+
+        nbas = len(uv.amp)        
+
+        self.figure = Figure(figsize=(4,3),dpi=100)
+        self.canvas = FigureCanvasWxAgg(self,-1,self.figure)
+
+        main_box = wx.BoxSizer(wx.HORIZONTAL)
+        main_box.Add(self.canvas, flag=wx.EXPAND, proportion=1)
+        self.SetSizer(main_box)
+
+        self.draw()
+
+    def draw(self):
+        bl = self.baseline
+        pol = self.pol
+
+        print "BP ",bl
+
+        amp = np.transpose(uv.amp[bl][:,:,pol])
+        msk = np.transpose(uv.flg[bl])
+        amp = ma.array(amp,mask=(1-msk))
+        medfilt = ma.median(amp,axis=1)
+        w = ma.std(amp,axis=1)
+        w = np.where(w==0,1e20,w)
+        w = 1/(w**0.5+1e-1)
+
+        print np.median(w)
+
+        bp = []
+        for i in np.arange(8):
+            xf = np.where(medfilt[i*451:i*451+451]!=0)[0]
+            spl = UnivariateSpline(xf,medfilt[xf+i*451],w=w[xf+i*451],s=1)
+#            spl.set_smoothing_factor(0.001)
+            bp.append(spl(np.arange(451)))
+        bp = np.concatenate(bp)
+
+        if not hasattr(self,'subplot'):
+            self.subplot = self.figure.add_subplot(111)
+            self.imshow = self.subplot.plot(amp*msk,',b')
+            self.imshow = self.subplot.plot(medfilt,'-g')
+            self.imshow = self.subplot.plot(bp,'-r')
+            self.imshow = self.subplot.plot(bp*1.25,'--r')
+            self.imshow = self.subplot.plot(bp*.75,'--r')
+        else:
+            self.subplot.clear()
+            self.imshow = self.subplot.plot(amp*msk,',b')
+            self.imshow = self.subplot.plot(medfilt,'-g')
+            self.imshow = self.subplot.plot(bp,'-r')
+            self.imshow = self.subplot.plot(bp*1.25,'--r')
+            self.imshow = self.subplot.plot(bp*.75,'--r')
+
+    def set_baseline(self,bl):
+        self.baseline = bl
+        self.draw()
+        self.repaint()
+
+
+    def repaint(self):
+        self.canvas.draw()
+
 
 
 class App(wx.App):
