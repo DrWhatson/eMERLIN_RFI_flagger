@@ -13,7 +13,7 @@ from matplotlib.pyplot import gcf,setp
 
 import RFI_fits as RFI
 #import RFI
-import smooth
+#import smooth
 
 import cPickle as pic
 import sys
@@ -66,11 +66,6 @@ class Baseline_Panel(wx.Panel):
         rfi_window = self.parent.rfi_Window
         tpanel = self.parent.controls.threshold_panel
 
-        if rfi_window.rms_thres[bl]==0:
-            rfi_window.rms_thres[bl] = tpanel.rms_slider.GetValue()/100.
-        else:
-            tpanel.set_rms_thres(rfi_window.rms_thres[bl])
-
         if rfi_window.amp_thres[bl]==0:
             rfi_window.amp_thres[bl] = tpanel.amp_slider.GetValue()/100.
         else:
@@ -92,27 +87,8 @@ class Baseline_Panel(wx.Panel):
             pol=1
 
         self.rfi_Window.set_polarization(pol)
-        
-
-class Smoothing_Panel(wx.Panel):
-    def __init__(self, *args, **kwargs):
-        wx.Panel.__init__(self, *args, **kwargs)
-        self.parent = args[0]
-        self.rfi_Window = self.parent.rfi_Window
-
-        self.heading = wx.StaticText(self,label='Smoothing',pos=(20,0))
-
-        smooth_val = 1.0
-
-        self.go_Button = wx.Button(self,-1,'Set',pos=(40,20),size=(30,20))
-        self.go_Button.Bind(wx.EVT_BUTTON,self.do_smoothing)
-
-    def do_smoothing(self,evt):
-        self.rfi_Window.do_smoothing_with_flags()
-
 
         
-
 class Threshold_Panel(wx.Panel):
     def __init__(self, *args, **kwargs):
         wx.Panel.__init__(self, *args, **kwargs)
@@ -120,35 +96,16 @@ class Threshold_Panel(wx.Panel):
         self.rfi_Window = self.parent.rfi_Window
 
         self.heading = wx.StaticText(self,label='Threshold levels',pos=(20,0))
-
-        self.rms_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,20),size=(300,20))
-        self.rms_slider.SetMax(1000)
-        self.rms_slider.SetPageSize(5)
-        self.rms_slider.SetValue(200)
-        self.rms_slider.Bind(wx.EVT_SCROLL, self.rms_Slider_Handler)
-
-        rms_thres = self.rms_slider.GetValue()
-        self.rms_thres_text = wx.StaticText(self,label="RMS threshold %2.2f" % (rms_thres/100.), pos=(20,40))
-
  
         self.amp_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,50),size=(300,20))
         self.amp_slider.SetMax(2000)
         self.amp_slider.SetPageSize(10)
-        self.amp_slider.SetValue(1000)
+        self.amp_slider.SetValue(200)
         self.amp_slider.Bind(wx.EVT_SCROLL, self.amp_Slider_Handler)
         
         amp_thres = self.amp_slider.GetValue()
         self.amp_thres_text = wx.StaticText(self,label="Amp threshold %2.2f" % (amp_thres/100.), pos=(20,70))
         
-
-    def rms_Slider_Handler(self,evt):
-        val = self.rms_slider.GetValue()/100.
-        self.rms_thres_text.SetLabel("RMS threshold %2.2f" % val)
-        self.rfi_Window.set_rms_threshold(val)
-
-    def set_rms_thres(self,val):
-        self.rms_thres_text.SetLabel("RMS threshold %2.2f" % val)
-        self.rms_slider.SetValue(val*100)
 
     def amp_Slider_Handler(self,evt):
         val = self.amp_slider.GetValue()/100.
@@ -187,12 +144,6 @@ class File_Panel(wx.Panel):
         filename = saveFileDialog.GetPath()
         pf = open(filename,'wb')
 
-        smo_val = 10.0
-        pic.dump(smo_val,pf)
-
-        rms_thres = self.parent.rfi_Window.rms_thres
-        pic.dump(rms_thres,pf)
-
         amp_thres = self.parent.rfi_Window.amp_thres
         pic.dump(amp_thres,pf)
         
@@ -213,16 +164,10 @@ class File_Panel(wx.Panel):
         filename = openFileDialog.GetPath()
         pf = open(filename,'rb')
 
-        smo_val = pic.load(pf)
-        rms_thres = pic.load(pf)
         amp_thres = pic.load(pf)
         pf.close()
 
         bl = self.parent.rfi_Window.baseline
-        self.parent.rfi_Window.rms_thres = rms_thres
-        val = rms_thres[bl]
-        self.parent.controls.threshold_panel.rms_thres_text.SetLabel("RMS threshold %2.2f" % val)
-        self.parent.controls.threshold_panel.rms_slider.SetValue(val*100)
 
         self.parent.rfi_Window.amp_thres = amp_thres
         val = amp_thres[bl]
@@ -254,7 +199,6 @@ class Controls():
         sizer2 = wx.BoxSizer(wx.HORIZONTAL)
 
         self.baseline_panel = Baseline_Panel(parent)
-        self.smoothing_panel = Smoothing_Panel(parent)
         self.threshold_panel = Threshold_Panel(parent)
         self.file_panel = File_Panel(parent)
         self.flags_panel = Flags_Panel(parent)
@@ -266,8 +210,6 @@ class Controls():
         sizer.Add(wx.StaticLine(self.parent, -1, style=wx.LI_HORIZONTAL),1,wx.EXPAND)
 
         sizer2.Add(self.baseline_panel,1,wx.EXPAND)
-        sizer2.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
-        sizer2.Add(self.smoothing_panel,2,wx.EXPAND)
         sizer2.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
         sizer2.Add(self.file_panel,2,wx.EXPAND)
         sizer2.Add(wx.StaticLine(self.parent, -1, style=wx.LI_VERTICAL),1,wx.EXPAND)
@@ -304,14 +246,10 @@ class RFI_Window(wx.Window):
         self.baseline = 1
 
         nbas = len(uv.amp)        
-        self.rms_thres = np.zeros(nbas,'f')
         self.amp_thres = np.zeros(nbas,'f')
-        self.sig = 10.0
         self.pol = 0
         
         print uv.err[self.baseline].shape
-        self.rms_smooth = self.smooth(uv.err[self.baseline][:,:,1],self.sig)
-        self.amp_smooth = self.smooth(uv.amp[self.baseline][:,:,1],self.sig)
 
         self.figure = Figure(figsize=(10,6),dpi=100)
         self.canvas = FigureCanvasWxAgg(self,-1,self.figure)
@@ -322,10 +260,10 @@ class RFI_Window(wx.Window):
 
         self.draw()
 
-    def flag_dropout(self, thres=90.0):
 
+    def get_clean_amp(self, percnt_pnt=90.0, pol=0):
     # Clean bits of spectrum
-        cb = [(1000,1300),(1400,1650),(2200,2500),(3000,3150),(3250,3400)] 
+        cb = [(1000,1300),(1400,1650),(3000,3150),(3250,3400)] 
         
         cb_index = []
         for i in np.arange(len(cb)):
@@ -334,58 +272,55 @@ class RFI_Window(wx.Window):
         bl = self.baseline
 
         cb_index = np.concatenate(cb_index)
-        amp0 = np.median(uv.amp[bl][:,cb_index,0],axis=1)
-        amp1 = np.median(uv.amp[bl][:,cb_index,1],axis=1)
+        amp = np.median(uv.amp[bl][:,cb_index,pol],axis=1)
 
-        thres0 = np.percentile(amp0,thres)
-        thres1 = np.percentile(amp1,thres)
+        thres = np.percentile(amp,percnt_pnt)
 
-        uv.dflg[bl] = np.where((amp0[:,np.newaxis]<thres0/3),0,1) 
-        uv.dflg[bl][:,:] *= np.where((amp1[:,np.newaxis]<thres1/3),0,1) 
+        return amp, thres
 
-
-    def smooth(self,e,sig,ndx=25,apply_flags=False): 
-        x = np.arange(-ndx,ndx+1)
-        y = x[:,np.newaxis]
-        r2 = x**2 + y**2
-        g = np.exp(-r2/2/sig**2)
+    def get_clean_rms(self, pol=0):
+    # Clean bits of spectrum
+        cb = [(1000,1300),(1400,1650),(3000,3150),(3250,3400)] 
         
-        w   = 1./e**2 * uv.dflg[self.baseline] 
+        cb_index = []
+        for i in np.arange(len(cb)):
+            cb_index.append(np.arange(cb[i][0],cb[i][1]))
 
-        if apply_flags:
-            w *= uv.flg[self.baseline]
+        bl = self.baseline
 
-        smo = smooth.weighted(e,w,g)
+        cb_index = np.concatenate(cb_index)
+        cln_rms = np.median(uv.err[bl][:,cb_index,pol])
+
+        return cln_rms
+
+
+    def flag_dropout(self, percnt_pnt=90.0, thres=0.3):
+
+        bl = self.baseline
+
+        amp0, thres0 = self.get_clean_amp(pol=0)
+        amp1, thres1 = self.get_clean_amp(pol=1)
+
+        self.clean_amp = (thres0, thres1)
+
+        uv.dflg[bl] = np.where((amp0[:,np.newaxis]<thres0*thres),0,1) 
+        uv.dflg[bl][:,:] *= np.where((amp1[:,np.newaxis]<thres1*thres),0,1) 
         
-        return smo
+        rms0 = self.get_clean_rms(pol=0)
+        rms1 = self.get_clean_rms(pol=1)
+
+        self.clean_rms = (rms0, rms1)
 
     def set_baseline(self,bl):
         self.baseline = bl
         self.flag_dropout()
 
-        self.rms_smooth_rr = self.smooth(uv.err[self.baseline][:,:,0],self.sig)
-        self.rms_smooth_ll = self.smooth(uv.err[self.baseline][:,:,1],self.sig)
-#        self.amp_smooth = self.smooth(uv.amp[self.baseline][:,:,1],self.sig)
         self.apply_thres()
         self.draw()
         self.repaint()
 
     def set_polarization(self,pol):
         self.pol = pol
-        self.draw()
-        self.repaint()
-
-    def do_smoothing_with_flags(self):
-        self.rms_smooth_rr = self.smooth(uv.err[self.baseline][:,:,0],self.sig,apply_flags=True)
-        self.rms_smooth_ll = self.smooth(uv.err[self.baseline][:,:,1],self.sig,apply_flags=True)
-#        self.amp_smooth = self.smooth(uv.amp[self.baseline][:,:,1],self.sig)
-        self.apply_thres()
-        self.draw()
-        self.repaint()
-
-    def set_rms_threshold(self,rms_thres):
-        self.rms_thres[self.baseline] = rms_thres
-        self.apply_thres()
         self.draw()
         self.repaint()
 
@@ -402,12 +337,17 @@ class RFI_Window(wx.Window):
         uv.flg[bl][:,:] = 1
         uv.flg[bl][:,:] *= uv.dflg[bl]
         
-        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,0]/self.rms_smooth_rr>self.rms_thres[bl],0,1)
-        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,1]/self.rms_smooth_ll>self.rms_thres[bl],0,1)
-        med_amp_rr = np.median(uv.amp[bl][:,:,0]*uv.flg[bl])
-        med_amp_ll = np.median(uv.amp[bl][:,:,1]*uv.flg[bl])
+        med_amp_rr = self.clean_amp[0]
+        med_amp_ll = self.clean_amp[1]
+
         uv.flg[bl][:,:] *= np.where(uv.amp[bl][:,:,0]/med_amp_rr>self.amp_thres[bl],0,1)
         uv.flg[bl][:,:] *= np.where(uv.amp[bl][:,:,1]/med_amp_ll>self.amp_thres[bl],0,1)
+
+        med_rms_rr = self.clean_rms[0]
+        med_rms_ll = self.clean_rms[1]
+
+        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,0]/med_rms_rr>120.0,0,1)
+        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,1]/med_rms_ll>120.0,0,1)
 
 
     def draw(self):
@@ -474,17 +414,28 @@ class BPass_Window(wx.Window):
         amp = ma.array(amp,mask=(1-msk))
         medfilt = ma.median(amp,axis=1)
         w = ma.std(amp,axis=1)
-        w = np.where(w==0,1e20,w)
-        w = 1/(w**0.5+1e-1)
+        w = np.where(w==0,1e4,w)
+        w = 1/(w+1e-2)
 
         print np.median(w)
 
         bp = []
         for i in np.arange(8):
             xf = np.where(medfilt[i*451:i*451+451]!=0)[0]
-            spl = UnivariateSpline(xf,medfilt[xf+i*451],w=w[xf+i*451],s=1)
-#            spl.set_smoothing_factor(0.001)
-            bp.append(spl(np.arange(451)))
+            nxf = len(xf)
+
+            if nxf>20:
+                spl = UnivariateSpline(xf,medfilt[xf+i*451],w=w[xf+i*451],s=1)
+                bp.append(spl(np.arange(451)))
+                
+            elif nxf==0:
+                bp.append(np.zeros(451))
+                
+            else:
+                spl = np.median(medfilt[xf+i*451])
+                bp.append(np.ones(451)*spl)
+                
+                
         bp = np.concatenate(bp)
 
         if not hasattr(self,'subplot'):
