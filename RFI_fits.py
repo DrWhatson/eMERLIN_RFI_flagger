@@ -224,7 +224,6 @@ class VisData:
                 prek += dk
 
 
-
         for i in range(len(self.bl)):
           a1,a2 = self.base_name[self.bl[i]]
           ant1 = ant_ID[a1]
@@ -257,14 +256,6 @@ class VisData:
                 t2 = self.start_time+(self.vtim[i][ik+dk-1]+1)*self.dt
                 timrng.append([t1,t2])
                 prek += dk
-
-#          pf = open('Dump_flags_bl04.pic','wb')
-#          pic.dump(self.flg[4],pf)
-#          pic.dump(chans,pf)
-#          pic.dump(timrng,pf)
-#          pic.dump(ifs,pf)
-#          pic.dump(self.vtim[4],pf)
-#          pf.close()
 
 
         print len(src)
@@ -302,7 +293,7 @@ class VisData:
 
         hdulist.writeto(outfile)
 
-def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
+def read_fits(fits_file, dt=10,progress=False,MAD=0):
 #    """Routine to read given uvdata into a VisData class"""
 
     hdu = fits.open(fits_file)
@@ -311,7 +302,6 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
 
     vd = VisData(hdu)
     vd.src = fits_file
-    vd.dchan = dch
     vd.dt = dt/86400.
     vd.get_nvis()
     vd.get_start_time()
@@ -335,6 +325,7 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
     vis2 = [[] for i in range(vd.nbas)]
     vhit = [[] for i in range(vd.nbas)]
     vd.vtim = [[] for i in range(vd.nbas)]
+    vd.peak = [[] for i in range(vd.nbas)]
 
     nb = 0
     tdic = [{} for i in range(vd.nbas)]
@@ -375,7 +366,6 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
         flux = vd.hdu[io+5].data.FLUX[i,:]
         flux.shape = (8,512,4,2)
         a = np.sqrt(flux[:,30:-31,:,0]**2+flux[:,30:-31,:,1]**2)
-#        a = a.reshape(vd.nif*vd.nchan/4,4,vd.nstoke).sum(axis=1)
 
         a = a.reshape(vd.nif*451,vd.nstoke)
 
@@ -391,14 +381,17 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
             tdic[ib][it] = ipos[ib]
             vis[ib].append(a)
             vis2[ib].append(a**2)
-            vhit[ib].append(4)
+            vhit[ib].append(1)
             vd.vtim[ib].append(it)
+            vd.peak[ib].append(a)
             ipos[ib] += 1
         else:
             ip = tdic[ib][it]
             vis[ib][ip] += a
             vis2[ib][ip] += a**2
-            vhit[ib][ip] += 4
+            vhit[ib][ip] += 1
+            ipk = np.where(a>vd.peak[ib][ip])
+            vd.peak[ib][ip][ipk] = a[ipk]
 
     vd.end_time = vd.hdu[vd.nobs+4].data.TIME[-1]
     vd.nt = int((vd.end_time-vd.start_time)/vd.dt)+1
@@ -413,6 +406,8 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
         vhit[i] = np.array(vhit[i])
         vhit[i] = vhit[i][:,np.newaxis,np.newaxis]
         vd.vtim[i] = np.array(vd.vtim[i])
+        vd.peak[i] = np.array(vd.peak[i])
+        
 
   # For each baseline generate amp and error arrays in visdata
 

@@ -67,9 +67,24 @@ class Baseline_Panel(wx.Panel):
         tpanel = self.parent.controls.threshold_panel
 
         if rfi_window.amp_thres[bl]==0:
-            rfi_window.amp_thres[bl] = tpanel.amp_slider.GetValue()/100.
+            rfi_window.amp_thres[bl] = float(tpanel.amp_thres_entry.GetValue())
         else:
             tpanel.set_amp_thres(rfi_window.amp_thres[bl])
+
+        if rfi_window.rms_thres[bl]==0:
+            rfi_window.rms_thres[bl] = float(tpanel.rms_thres_entry.GetValue())
+        else:
+            tpanel.set_rms_thres(rfi_window.rms_thres[bl])
+
+        if rfi_window.peak_thres[bl]==0:
+            rfi_window.peak_thres[bl] = float(tpanel.peak_thres_entry.GetValue())
+        else:
+            tpanel.set_peak_thres(rfi_window.peak_thres[bl])
+
+        if rfi_window.dropout_thres[bl]==0:
+            rfi_window.dropout_thres[bl] = float(tpanel.dropout_thres_entry.GetValue())
+        else:
+            tpanel.set_dropout_thres(rfi_window.dropout_thres[bl])
         
         a1,a2 = uv.base_name[uv.bl[bl]]
         base_name = "%i %s-%s" % (bl,a1,a2)
@@ -97,24 +112,40 @@ class Threshold_Panel(wx.Panel):
 
         self.heading = wx.StaticText(self,label='Threshold levels',pos=(20,0))
  
-        self.amp_slider = wx.Slider(self,-1,style=wx.SL_HORIZONTAL,pos=(0,50),size=(300,20))
-        self.amp_slider.SetMax(2000)
-        self.amp_slider.SetPageSize(10)
-        self.amp_slider.SetValue(200)
-        self.amp_slider.Bind(wx.EVT_SCROLL, self.amp_Slider_Handler)
-        
-        amp_thres = self.amp_slider.GetValue()
-        self.amp_thres_text = wx.StaticText(self,label="Amp threshold %2.2f" % (amp_thres/100.), pos=(20,70))
+        self.amp_thres_text = wx.StaticText(self,label="Amp threshold", pos=(5,20))
+        self.amp_thres_entry = wx.TextCtrl(self,value="2.00",pos=(90,20),style=wx.TE_PROCESS_ENTER)
+        self.amp_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_amp_thres)
+
+        self.rms_thres_text = wx.StaticText(self,label="RMS threshold", pos=(5,40))
+        self.rms_thres_entry = wx.TextCtrl(self,value="12.00",pos=(90,40),style=wx.TE_PROCESS_ENTER)
+        self.rms_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_rms_thres)
+
+        self.peak_thres_text = wx.StaticText(self,label="Peak threshold", pos=(5,60))
+        self.peak_thres_entry = wx.TextCtrl(self,value="2.00",pos=(90,60),style=wx.TE_PROCESS_ENTER)
+        self.peak_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_peak_thres)
+
+        self.dropout_thres_text = wx.StaticText(self,label="Dropout threshold", pos=(5,80))
+        self.dropout_thres_entry = wx.TextCtrl(self,value="3.00",pos=(90,80),style=wx.TE_PROCESS_ENTER)
+        self.dropout_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_dropout_thres)
+
         
 
-    def amp_Slider_Handler(self,evt):
-        val = self.amp_slider.GetValue()/100.
-        self.amp_thres_text.SetLabel("Amp threshold %2.2f" % val)
-        self.rfi_Window.set_amp_threshold(val)
+    def set_amp_thres(self,evt):
+        val = float(self.amp_thres_entry.GetValue())
+        self.rfi_Window.get_amp_threshold(val)
 
-    def set_amp_thres(self,val):
-        self.amp_thres_text.SetLabel("Amp threshold %2.2f" % val)
-        self.amp_slider.SetValue(val*100)
+    def set_rms_thres(self,evt):
+        val = float(self.rms_thres_entry.GetValue())
+        self.rfi_Window.get_rms_threshold(val)
+
+    def set_peak_thres(self,evt):
+        val = float(self.peak_thres_entry.GetValue())
+        self.rfi_Window.get_peak_threshold(val)
+
+    def set_dropout_thres(self,evt):
+        val = float(self.dropout_thres_entry.GetValue())
+        self.rfi_Window.get_dropout_threshold(val)
+
 
 
 class File_Panel(wx.Panel):
@@ -145,7 +176,14 @@ class File_Panel(wx.Panel):
         pf = open(filename,'wb')
 
         amp_thres = self.parent.rfi_Window.amp_thres
+        rms_thres = self.parent.rfi_Window.rms_thres
+        peak_thres = self.parent.rfi_Window.peak_thres
+        dropout_thres = self.parent.rfi_Window.dropout_thres
+
         pic.dump(amp_thres,pf)
+        pic.dump(rms_thres,pf)
+        pic.dump(peak_thres,pf)
+        pic.dump(dropout_thres,pf)
         
         pf.close()
         
@@ -165,14 +203,21 @@ class File_Panel(wx.Panel):
         pf = open(filename,'rb')
 
         amp_thres = pic.load(pf)
+        rms_thres = pic.load(pf)
+        peak_thres = pic.load(pf)
+        dropout_thres = pic.load(pf)
         pf.close()
 
         bl = self.parent.rfi_Window.baseline
 
         self.parent.rfi_Window.amp_thres = amp_thres
-        val = amp_thres[bl]
-        self.parent.controls.threshold_panel.amp_thres_text.SetLabel("Amp threshold %2.2f" % val)
-        self.parent.controls.threshold_panel.amp_slider.SetValue(val*100)
+        self.parent.controls.threshold_panel.amp_thres_entry.SetValue("%2.2f" % amp_thres[bl])
+        self.parent.rfi_Window.rms_thres = rms_thres
+        self.parent.controls.threshold_panel.rms_thres_entry.SetValue("%2.2f" % rms_thres[bl])
+        self.parent.rfi_Window.peak_thres = peak_thres
+        self.parent.controls.threshold_panel.peak_thres_entry.SetValue("%2.2f" % peak_thres[bl])
+        self.parent.rfi_Window.amp_thres = dropout_thres
+        self.parent.controls.threshold_panel.dropout_thres_entry.SetValue("%2.2f" % dropout_thres[bl])
 
 class Flags_Panel(wx.Panel):
     def __init__(self, *args, **kwargs):
@@ -247,6 +292,9 @@ class RFI_Window(wx.Window):
 
         nbas = len(uv.amp)        
         self.amp_thres = np.zeros(nbas,'f')
+        self.rms_thres = np.zeros(nbas,'f')
+        self.peak_thres = np.zeros(nbas,'f')
+        self.dropout_thres = np.zeros(nbas,'f')
         self.pol = 0
         
         print uv.err[self.baseline].shape
@@ -293,23 +341,45 @@ class RFI_Window(wx.Window):
 
         return cln_rms
 
+    def get_clean_peak(self, pol=0):
+    # Clean bits of spectrum
+        cb = [(1000,1300),(1400,1650),(3000,3150),(3250,3400)] 
+        
+        cb_index = []
+        for i in np.arange(len(cb)):
+            cb_index.append(np.arange(cb[i][0],cb[i][1]))
+
+        bl = self.baseline
+
+        cb_index = np.concatenate(cb_index)
+        cln_pk = np.median(uv.peak[bl][:,cb_index,pol])
+
+        return cln_pk
+
 
     def flag_dropout(self, percnt_pnt=90.0, thres=0.3):
 
         bl = self.baseline
+        thres = self.dropout_thres[bl]
 
         amp0, thres0 = self.get_clean_amp(pol=0)
         amp1, thres1 = self.get_clean_amp(pol=1)
 
+
         self.clean_amp = (thres0, thres1)
 
-        uv.dflg[bl] = np.where((amp0[:,np.newaxis]<thres0*thres),0,1) 
-        uv.dflg[bl][:,:] *= np.where((amp1[:,np.newaxis]<thres1*thres),0,1) 
+        uv.dflg[bl] = np.where((amp0[:,np.newaxis]<thres0/thres),0,1) 
+        uv.dflg[bl][:,:] *= np.where((amp1[:,np.newaxis]<thres1/thres),0,1) 
         
         rms0 = self.get_clean_rms(pol=0)
         rms1 = self.get_clean_rms(pol=1)
 
         self.clean_rms = (rms0, rms1)
+
+        peak0 = self.get_clean_peak(pol=0)
+        peak1 = self.get_clean_peak(pol=1)
+
+        uv.clean_peak = (peak0, peak1)
 
     def set_baseline(self,bl):
         self.baseline = bl
@@ -324,12 +394,45 @@ class RFI_Window(wx.Window):
         self.draw()
         self.repaint()
 
-    def set_amp_threshold(self,amp_thres):
+    def get_amp_threshold(self,amp_thres):
         self.amp_thres[self.baseline] = amp_thres
         self.apply_thres()
         self.draw()
         self.repaint()
         
+
+    def get_rms_threshold(self,rms_thres):
+        self.rms_thres[self.baseline] = rms_thres
+        self.apply_thres()
+        self.draw()
+        self.repaint()
+        
+
+    def get_peak_threshold(self,peak_thres):
+        self.peak_thres[self.baseline] = peak_thres
+        self.apply_thres()
+        self.draw()
+        self.repaint()
+        
+    def get_dropout_threshold(self,dropout_thres):
+        self.dropout_thres[self.baseline] = dropout_thres
+        self.flag_dropout()
+        self.apply_thres()
+        self.draw()
+        self.repaint()
+
+
+    def set_amp_threshold(self,amp_thres):
+        self.amp_thres_entry.SetValue("%2.2f" % amp_thres)
+
+    def set_rms_threshold(self,rms_thres):
+        self.rms_thres_entry.SetValue("%2.2f" % rms_thres)
+
+    def set_peak_threshold(self,peak_thres):
+        self.peak_thres_entry.SetValue("%2.2f" % peak_thres)
+
+    def set_dropout_threshold(self,dropout_thres):
+        self.dropout_thres_entry.SetValue("%2.2f" % dropout_thres)
 
     def apply_thres(self):
         bl = self.baseline
@@ -346,8 +449,16 @@ class RFI_Window(wx.Window):
         med_rms_rr = self.clean_rms[0]
         med_rms_ll = self.clean_rms[1]
 
-        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,0]/med_rms_rr>120.0,0,1)
-        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,1]/med_rms_ll>120.0,0,1)
+        print 'rms=',self.rms_thres[bl]
+        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,0]/med_rms_rr>self.rms_thres[bl],0,1)
+        uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,1]/med_rms_ll>self.rms_thres[bl],0,1)
+
+        med_peak_rr = uv.clean_peak[0]
+        med_peak_ll = uv.clean_peak[1]
+
+        print 'peak=',self.peak_thres[bl]
+        uv.flg[bl][:,:] *= np.where(uv.peak[bl][:,:,0]/med_peak_rr>self.peak_thres[bl],0,1)
+        uv.flg[bl][:,:] *= np.where(uv.peak[bl][:,:,1]/med_peak_ll>self.peak_thres[bl],0,1)
 
 
     def draw(self):
@@ -408,6 +519,7 @@ class BPass_Window(wx.Window):
         pol = self.pol
 
         print "BP ",bl
+        print 'peak shape = ',uv.peak[bl].shape
 
         amp = np.transpose(uv.amp[bl][:,:,pol])
         msk = np.transpose(uv.flg[bl])
@@ -416,6 +528,10 @@ class BPass_Window(wx.Window):
         w = ma.std(amp,axis=1)
         w = np.where(w==0,1e4,w)
         w = 1/(w+1e-2)
+
+        pk = np.transpose(uv.peak[bl][:,:,pol])
+        pk = ma.array(pk,mask=(1-msk))
+        medpk = ma.median(pk,axis=1)
 
         print np.median(w)
 
@@ -442,16 +558,20 @@ class BPass_Window(wx.Window):
             self.subplot = self.figure.add_subplot(111)
             self.imshow = self.subplot.plot(amp*msk,',b')
             self.imshow = self.subplot.plot(medfilt,'-g')
+            self.imshow = self.subplot.plot(medpk,'-k')
             self.imshow = self.subplot.plot(bp,'-r')
             self.imshow = self.subplot.plot(bp*1.25,'--r')
             self.imshow = self.subplot.plot(bp*.75,'--r')
+            self.imshow = self.subplot.plot(np.ones(4000)*uv.clean_peak[0])
         else:
             self.subplot.clear()
             self.imshow = self.subplot.plot(amp*msk,',b')
             self.imshow = self.subplot.plot(medfilt,'-g')
+            self.imshow = self.subplot.plot(medpk,'-k')
             self.imshow = self.subplot.plot(bp,'-r')
             self.imshow = self.subplot.plot(bp*1.25,'--r')
             self.imshow = self.subplot.plot(bp*.75,'--r')
+            self.imshow = self.subplot.plot(np.ones(4000)*uv.clean_peak[0])
 
     def set_baseline(self,bl):
         self.baseline = bl
@@ -467,7 +587,7 @@ class BPass_Window(wx.Window):
 class App(wx.App):
     def OnInit(self):
 
-        self.frame1 = RFI_Frame(parent=None,title='RFI removal tool',size=(1200,850))
+        self.frame1 = RFI_Frame(parent=None,title='RFI removal tool',size=(1400,850))
         self.frame1.Show()
         return True
 
@@ -477,38 +597,7 @@ if __name__=='__main__':
 
     uv = RFI.read_fits(fits_file,progress=1)
     bl = 0
-
-#    pf = open('BP_pickle.pic')
-#    bpr1,bpi1 = pic.load(pf)
-#    bpr2,bpi2 = pic.load(pf)
-#    pf.close()
-            
-#    bpr1.shape = (9,1024,4)
-#    bp1 = np.mean(bpr1,axis=2)
-#    bp1 = bp1[:,np.newaxis,:]
-
-#    bpr2.shape = (9,1024,4)
-#    bp2 = np.mean(bpr2,axis=2)
-#    bp2 = bp2[:,np.newaxis,:]
-
-#    bp1 = np.where(bp1!=bp1,1,bp1)
-#    bp1 = np.where(bp1<1e-2,1,bp1)
-
-#    bp2 = np.where(bp2!=bp2,1,bp2)
-#    bp2 = np.where(bp2<1e-2,1,bp2)
-
-#    for i in range(21):
-#        a1,a2 = uv.base_name[i+1]
-#        a1 = RFI.ant_ID[a1]-1
-#        a2 = RFI.ant_ID[a2]-1
-
-#        bp_corr = np.sqrt(bp1[a1,:,:]*bp2[a2,:,:])
-
-#        print  uv.amp[i].shape, bp_corr.shape
-#        uv.amp[i][:,:,0] = uv.amp[i][:,:,0]/bp_corr
-#        uv.amp[i][:,:,1] = uv.amp[i][:,:,1]/bp_corr
-#        uv.err[i][:,:,0] = uv.err[i][:,:,0]/bp_corr
-#        uv.err[i][:,:,1] = uv.err[i][:,:,1]/bp_corr
+    uv.clean_peak = (0,0)
 
     app = App()
     app.MainLoop()
