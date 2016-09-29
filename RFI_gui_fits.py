@@ -76,11 +76,6 @@ class Baseline_Panel(wx.Panel):
         else:
             tpanel.set_rms_thres(rfi_window.rms_thres[bl])
 
-        if rfi_window.peak_thres[bl]==0:
-            rfi_window.peak_thres[bl] = float(tpanel.peak_thres_entry.GetValue())
-        else:
-            tpanel.set_peak_thres(rfi_window.peak_thres[bl])
-
         if rfi_window.dropout_thres[bl]==0:
             rfi_window.dropout_thres[bl] = float(tpanel.dropout_thres_entry.GetValue())
         else:
@@ -120,10 +115,6 @@ class Threshold_Panel(wx.Panel):
         self.rms_thres_entry = wx.TextCtrl(self,value="12.00",pos=(90,40),style=wx.TE_PROCESS_ENTER)
         self.rms_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_rms_thres)
 
-        self.peak_thres_text = wx.StaticText(self,label="Peak threshold", pos=(5,60))
-        self.peak_thres_entry = wx.TextCtrl(self,value="2.00",pos=(90,60),style=wx.TE_PROCESS_ENTER)
-        self.peak_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_peak_thres)
-
         self.dropout_thres_text = wx.StaticText(self,label="Dropout threshold", pos=(5,80))
         self.dropout_thres_entry = wx.TextCtrl(self,value="3.00",pos=(90,80),style=wx.TE_PROCESS_ENTER)
         self.dropout_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_dropout_thres)
@@ -137,10 +128,6 @@ class Threshold_Panel(wx.Panel):
     def set_rms_thres(self,evt):
         val = float(self.rms_thres_entry.GetValue())
         self.rfi_Window.get_rms_threshold(val)
-
-    def set_peak_thres(self,evt):
-        val = float(self.peak_thres_entry.GetValue())
-        self.rfi_Window.get_peak_threshold(val)
 
     def set_dropout_thres(self,evt):
         val = float(self.dropout_thres_entry.GetValue())
@@ -177,12 +164,10 @@ class File_Panel(wx.Panel):
 
         amp_thres = self.parent.rfi_Window.amp_thres
         rms_thres = self.parent.rfi_Window.rms_thres
-        peak_thres = self.parent.rfi_Window.peak_thres
         dropout_thres = self.parent.rfi_Window.dropout_thres
 
         pic.dump(amp_thres,pf)
         pic.dump(rms_thres,pf)
-        pic.dump(peak_thres,pf)
         pic.dump(dropout_thres,pf)
         
         pf.close()
@@ -204,7 +189,6 @@ class File_Panel(wx.Panel):
 
         amp_thres = pic.load(pf)
         rms_thres = pic.load(pf)
-        peak_thres = pic.load(pf)
         dropout_thres = pic.load(pf)
         pf.close()
 
@@ -214,8 +198,6 @@ class File_Panel(wx.Panel):
         self.parent.controls.threshold_panel.amp_thres_entry.SetValue("%2.2f" % amp_thres[bl])
         self.parent.rfi_Window.rms_thres = rms_thres
         self.parent.controls.threshold_panel.rms_thres_entry.SetValue("%2.2f" % rms_thres[bl])
-        self.parent.rfi_Window.peak_thres = peak_thres
-        self.parent.controls.threshold_panel.peak_thres_entry.SetValue("%2.2f" % peak_thres[bl])
         self.parent.rfi_Window.amp_thres = dropout_thres
         self.parent.controls.threshold_panel.dropout_thres_entry.SetValue("%2.2f" % dropout_thres[bl])
 
@@ -293,7 +275,6 @@ class RFI_Window(wx.Window):
         nbas = len(uv.amp)        
         self.amp_thres = np.zeros(nbas,'f')
         self.rms_thres = np.zeros(nbas,'f')
-        self.peak_thres = np.zeros(nbas,'f')
         self.dropout_thres = np.zeros(nbas,'f')
         self.pol = 0
         
@@ -341,21 +322,6 @@ class RFI_Window(wx.Window):
 
         return cln_rms
 
-    def get_clean_peak(self, pol=0):
-    # Clean bits of spectrum
-        cb = [(1000,1300),(1400,1650),(3000,3150),(3250,3400)] 
-        
-        cb_index = []
-        for i in np.arange(len(cb)):
-            cb_index.append(np.arange(cb[i][0],cb[i][1]))
-
-        bl = self.baseline
-
-        cb_index = np.concatenate(cb_index)
-        cln_pk = np.median(uv.peak[bl][:,cb_index,pol])
-
-        return cln_pk
-
 
     def flag_dropout(self, percnt_pnt=90.0, thres=0.3):
 
@@ -375,11 +341,6 @@ class RFI_Window(wx.Window):
         rms1 = self.get_clean_rms(pol=1)
 
         self.clean_rms = (rms0, rms1)
-
-        peak0 = self.get_clean_peak(pol=0)
-        peak1 = self.get_clean_peak(pol=1)
-
-        uv.clean_peak = (peak0, peak1)
 
     def set_baseline(self,bl):
         self.baseline = bl
@@ -407,12 +368,6 @@ class RFI_Window(wx.Window):
         self.draw()
         self.repaint()
         
-
-    def get_peak_threshold(self,peak_thres):
-        self.peak_thres[self.baseline] = peak_thres
-        self.apply_thres()
-        self.draw()
-        self.repaint()
         
     def get_dropout_threshold(self,dropout_thres):
         self.dropout_thres[self.baseline] = dropout_thres
@@ -427,9 +382,6 @@ class RFI_Window(wx.Window):
 
     def set_rms_threshold(self,rms_thres):
         self.rms_thres_entry.SetValue("%2.2f" % rms_thres)
-
-    def set_peak_threshold(self,peak_thres):
-        self.peak_thres_entry.SetValue("%2.2f" % peak_thres)
 
     def set_dropout_threshold(self,dropout_thres):
         self.dropout_thres_entry.SetValue("%2.2f" % dropout_thres)
@@ -453,12 +405,6 @@ class RFI_Window(wx.Window):
         uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,0]/med_rms_rr>self.rms_thres[bl],0,1)
         uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,1]/med_rms_ll>self.rms_thres[bl],0,1)
 
-        med_peak_rr = uv.clean_peak[0]
-        med_peak_ll = uv.clean_peak[1]
-
-        print 'peak=',self.peak_thres[bl]
-        uv.flg[bl][:,:] *= np.where(uv.peak[bl][:,:,0]/med_peak_rr>self.peak_thres[bl],0,1)
-        uv.flg[bl][:,:] *= np.where(uv.peak[bl][:,:,1]/med_peak_ll>self.peak_thres[bl],0,1)
 
 
     def draw(self):
@@ -500,10 +446,12 @@ class BPass_Window(wx.Window):
     def __init__(self, *args, **kwargs):
         wx.Window.__init__(self, *args, **kwargs)
 
+        self.parent = self.GetParent()
         self.baseline = 1
         self.pol = 0
 
         nbas = len(uv.amp)        
+        self.IF_thres = np.zeros((8,2,nbas),'f')
 
         self.figure = Figure(figsize=(4,3),dpi=100)
         self.canvas = FigureCanvasWxAgg(self,-1,self.figure)
@@ -519,7 +467,6 @@ class BPass_Window(wx.Window):
         pol = self.pol
 
         print "BP ",bl
-        print 'peak shape = ',uv.peak[bl].shape
 
         amp = np.transpose(uv.amp[bl][:,:,pol])
         msk = np.transpose(uv.flg[bl])
@@ -529,49 +476,64 @@ class BPass_Window(wx.Window):
         w = np.where(w==0,1e4,w)
         w = 1/(w+1e-2)
 
-        pk = np.transpose(uv.peak[bl][:,:,pol])
-        pk = ma.array(pk,mask=(1-msk))
-        medpk = ma.median(pk,axis=1)
-
         print np.median(w)
 
         bp = []
+        IF = []
+
         for i in np.arange(8):
-            xf = np.where(medfilt[i*451:i*451+451]!=0)[0]
+            xf = np.where(medfilt[i*451:i*451+451]!=0)[0]            
             nxf = len(xf)
 
             if nxf>20:
                 spl = UnivariateSpline(xf,medfilt[xf+i*451],w=w[xf+i*451],s=1)
                 bp.append(spl(np.arange(451)))
-                
+                a = np.polyfit(xf,medfilt[xf+i*451],1,w=w[xf+i*451])
+
+                if i==0:
+                    a[1] = a[1]*3 + 2.5e-4 
+                else:
+                    a[1] = a[1]*1.5 + 2.5e-4 
+
+                self.IF_thres[i,:,bl] = a
+ 
+                IF.append(np.polyval(a,np.arange(451)))
+               
             elif nxf==0:
                 bp.append(np.zeros(451))
+                self.IF_thres[i,:,bl] = 0.0
+                IF.append(np.zeros(451))
                 
             else:
                 spl = np.median(medfilt[xf+i*451])
                 bp.append(np.ones(451)*spl)
+                self.IF_thres[i,1,bl] = ma.median(medfilt[xf+i*451])*3.0
+                self.IF_thres[i,0,bl] = 0
+                IF.append(np.ones(451)*self.IF_thres[i,1,bl])
+ 
+            print i,self.IF_thres[i,:,bl]
                 
                 
+
         bp = np.concatenate(bp)
+        IF = np.concatenate(IF)
 
         if not hasattr(self,'subplot'):
             self.subplot = self.figure.add_subplot(111)
             self.imshow = self.subplot.plot(amp*msk,',b')
             self.imshow = self.subplot.plot(medfilt,'-g')
-            self.imshow = self.subplot.plot(medpk,'-k')
             self.imshow = self.subplot.plot(bp,'-r')
-            self.imshow = self.subplot.plot(bp*1.25,'--r')
-            self.imshow = self.subplot.plot(bp*.75,'--r')
-            self.imshow = self.subplot.plot(np.ones(4000)*uv.clean_peak[0])
+            self.imshow = self.subplot.plot(IF,'-k')
+#            self.imshow = self.subplot.plot(bp*1.25,'--r')
+#            self.imshow = self.subplot.plot(bp*.75,'--r')
         else:
             self.subplot.clear()
             self.imshow = self.subplot.plot(amp*msk,',b')
             self.imshow = self.subplot.plot(medfilt,'-g')
-            self.imshow = self.subplot.plot(medpk,'-k')
             self.imshow = self.subplot.plot(bp,'-r')
-            self.imshow = self.subplot.plot(bp*1.25,'--r')
-            self.imshow = self.subplot.plot(bp*.75,'--r')
-            self.imshow = self.subplot.plot(np.ones(4000)*uv.clean_peak[0])
+            self.imshow = self.subplot.plot(IF,'-k')
+#            self.imshow = self.subplot.plot(bp*1.25,'--r')
+#            self.imshow = self.subplot.plot(bp*.75,'--r')
 
     def set_baseline(self,bl):
         self.baseline = bl
@@ -597,7 +559,6 @@ if __name__=='__main__':
 
     uv = RFI.read_fits(fits_file,progress=1)
     bl = 0
-    uv.clean_peak = (0,0)
 
     app = App()
     app.MainLoop()

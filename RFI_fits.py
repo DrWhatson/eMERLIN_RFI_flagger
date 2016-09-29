@@ -325,7 +325,6 @@ def read_fits(fits_file, dt=10,progress=False,MAD=0):
     vis2 = [[] for i in range(vd.nbas)]
     vhit = [[] for i in range(vd.nbas)]
     vd.vtim = [[] for i in range(vd.nbas)]
-    vd.peak = [[] for i in range(vd.nbas)]
 
     nb = 0
     tdic = [{} for i in range(vd.nbas)]
@@ -383,15 +382,12 @@ def read_fits(fits_file, dt=10,progress=False,MAD=0):
             vis2[ib].append(a**2)
             vhit[ib].append(1)
             vd.vtim[ib].append(it)
-            vd.peak[ib].append(a)
             ipos[ib] += 1
         else:
             ip = tdic[ib][it]
             vis[ib][ip] += a
             vis2[ib][ip] += a**2
             vhit[ib][ip] += 1
-            ipk = np.where(a>vd.peak[ib][ip])
-            vd.peak[ib][ip][ipk] = a[ipk]
 
     vd.end_time = vd.hdu[vd.nobs+4].data.TIME[-1]
     vd.nt = int((vd.end_time-vd.start_time)/vd.dt)+1
@@ -406,7 +402,6 @@ def read_fits(fits_file, dt=10,progress=False,MAD=0):
         vhit[i] = np.array(vhit[i])
         vhit[i] = vhit[i][:,np.newaxis,np.newaxis]
         vd.vtim[i] = np.array(vd.vtim[i])
-        vd.peak[i] = np.array(vd.peak[i])
         
 
   # For each baseline generate amp and error arrays in visdata
