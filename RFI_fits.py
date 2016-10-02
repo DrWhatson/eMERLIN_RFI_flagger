@@ -21,7 +21,7 @@ cb_index = np.concatenate(cb_index)
 
 
 class VisData:
-    """Class to store visiility data for RFI module"""
+    """Class to store visibility data for RFI module"""
     def __init__(self,hdu):
         self.hdu = hdu
 
@@ -443,6 +443,7 @@ def read_fits(fits_file, dt=10,progress=False,MAD=0):
 
 
     return vd
+
 
 
 def flag_via_amp(vd,thres=1.5,sig=4,ndx=20):

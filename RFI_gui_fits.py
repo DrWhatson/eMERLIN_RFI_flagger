@@ -3,6 +3,7 @@ import numpy.ma as ma
 from scipy.interpolate import UnivariateSpline
 import wx
 import wx.lib.buttons as buttons
+import pyfits as fits
 
 import matplotlib
 matplotlib.interactive(False)
@@ -105,22 +106,25 @@ class Threshold_Panel(wx.Panel):
         self.parent = args[0]
         self.rfi_Window = self.parent.rfi_Window
 
-        self.heading = wx.StaticText(self,label='Threshold levels',pos=(20,0))
+        self.heading = wx.StaticText(self,label='Threshold levels',pos=(5,0))
  
-        self.amp_thres_text = wx.StaticText(self,label="Amp threshold", pos=(5,20))
-        self.amp_thres_entry = wx.TextCtrl(self,value="2.00",pos=(90,20),style=wx.TE_PROCESS_ENTER)
+        self.amp_thres_text = wx.StaticText(self,label="Amp threshold", pos=(5,30))
+        self.amp_thres_entry = wx.TextCtrl(self,value="2.20",pos=(110,30),style=wx.TE_PROCESS_ENTER)
         self.amp_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_amp_thres)
 
-        self.rms_thres_text = wx.StaticText(self,label="RMS threshold", pos=(5,40))
-        self.rms_thres_entry = wx.TextCtrl(self,value="12.00",pos=(90,40),style=wx.TE_PROCESS_ENTER)
+        self.rms_thres_text = wx.StaticText(self,label="RMS threshold", pos=(5,60))
+        self.rms_thres_entry = wx.TextCtrl(self,value="15.00",pos=(110,60),style=wx.TE_PROCESS_ENTER)
         self.rms_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_rms_thres)
 
-        self.dropout_thres_text = wx.StaticText(self,label="Dropout threshold", pos=(5,80))
-        self.dropout_thres_entry = wx.TextCtrl(self,value="3.00",pos=(90,80),style=wx.TE_PROCESS_ENTER)
+        self.dropout_thres_text = wx.StaticText(self,label="Dropout thres", pos=(5,90))
+        self.dropout_thres_entry = wx.TextCtrl(self,value="3.00",pos=(110,90),style=wx.TE_PROCESS_ENTER)
         self.dropout_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_dropout_thres)
 
-        
+        self.IF_thres_text = wx.StaticText(self,label='IF thresholds',pos=(5,130))
+        self.IF_thres_button = wx.Button(self,-1,'Apply',pos=(110,125),size=(60,30))
+        self.IF_thres_button.Bind(wx.EVT_BUTTON,self.apply_IF_thres)
 
+        
     def set_amp_thres(self,evt):
         val = float(self.amp_thres_entry.GetValue())
         self.rfi_Window.get_amp_threshold(val)
@@ -133,6 +137,8 @@ class Threshold_Panel(wx.Panel):
         val = float(self.dropout_thres_entry.GetValue())
         self.rfi_Window.get_dropout_threshold(val)
 
+    def apply_IF_thres(self,evt):
+        self.rfi_Window.apply_IF_thres(bp_window.IF_thres)
 
 
 class File_Panel(wx.Panel):
@@ -201,6 +207,15 @@ class File_Panel(wx.Panel):
         self.parent.rfi_Window.amp_thres = dropout_thres
         self.parent.controls.threshold_panel.dropout_thres_entry.SetValue("%2.2f" % dropout_thres[bl])
 
+class Flag():
+    def __init__(self):
+        self.bchan = []
+        self.echan = []
+        self.btime = []
+        self.etime = []
+
+
+
 class Flags_Panel(wx.Panel):
     def __init__(self, *args, **kwargs):
         wx.Panel.__init__(self, *args, **kwargs)
@@ -208,13 +223,325 @@ class Flags_Panel(wx.Panel):
 
         self.heading = wx.StaticText(self,label='Write Flags',pos=(20,0))
         self.write_button = wx.Button(self,-1,'Go',pos=(0,30),size=(100,35))
-        self.write_button.Bind(wx.EVT_BUTTON,self.write_flags)
+        self.write_button.Bind(wx.EVT_BUTTON,self.write_new_flags)
         self.status = wx.StaticText(self,label='       ',pos=(10,70))
 
     def write_flags(self,evt):
         self.status.SetLabel('Writing flags')
         uv.write_flag_table()
         self.status.SetLabel('Done')
+
+    def write_new_flags(self,evt):
+        self.status.SetLabel('Re-reading data')
+                
+        ipos = np.zeros(uv.nbas,'i')
+        itot = 0
+
+        flags = []
+        IF_clip = np.zeros((8,451,2,21),'f')
+        for i in range(21):
+            flags.append([])
+            for j in range(8):
+                flags[i].append(Flag())
+
+                a = bp_window.IF_thres[j,0,i,:]
+                amp_max = self.parent.rfi_Window.amp_thres_max[i,0]
+                IF_clip[j,:,0,i] = np.polyval(a,np.arange(451))
+                IF_clip[j,:,0,i] = np.where(IF_clip[j,:,0,i]>amp_max,amp_max,IF_clip[j,:,0,i])
+
+                a = bp_window.IF_thres[j,1,i,:]
+                IF_clip[j,:,1,i] = np.polyval(a,np.arange(451))
+                IF_clip[j,:,1,i] = np.where(IF_clip[j,:,1,i]>amp_max,amp_max,IF_clip[j,:,1,i])
+                
+
+
+        for io in np.arange(uv.nobs):
+            nvis_obs = uv.hdu[5+io].header['NAXIS2']  
+            for i in np.arange(nvis_obs):
+                itot += 1  
+                baseline = uv.hdu[5+io].data.BASELINE[i]  
+                ant1 = baseline/256
+                ant2 = baseline%256
+
+                if ant1==ant2:
+                    continue
+        
+                if ant1<ant2:
+                    a1 = RFI.ant_no[ant1]
+                    a2 = RFI.ant_no[ant2]
+                else:
+                    a1 = RFI.ant_no[ant2]
+                    a2 = RFI.ant_no[ant1]
+
+                if ant1==1 and ant2==2:
+                    continue
+
+                ib = (2*uv.nant+2-a1)*(a1-1)/2 + a2 - a1 -1
+
+                t = uv.hdu[io+5].data.TIME[i]+uv.hdu[io+5].data.DATE[i]
+                t -= uv.start_date
+                flux = uv.hdu[io+5].data.FLUX[i,:]
+                flux.shape = (8,512,4,2)
+                a = np.sqrt(flux[:,30:-31,:2,0]**2+flux[:,30:-31,:2,1]**2)
+
+                # Get common flags
+                flg  = np.where(a[:,:,0]>IF_clip[:,:,0,ib],0,1)
+                flg *= np.where(a[:,:,1]>IF_clip[:,:,1,ib],0,1)
+
+                # Loop over IFs looking for blocks of RFI
+                for j in range(8):
+                    ix = np.where(flg[j,:]==0)[0]
+                    if len(ix)==0:
+                        continue
+                    blk = ix - range(len(ix)) 
+                    indx,indx2 = np.unique(blk,return_index=1)  # Start channels of RFI
+                    indx2[:-1] = indx2[1:]
+                    indx2[-1] = len(ix)
+                    echan = indx + indx2  
+                    indx2[1:] = indx2[1:] - indx2[:-1]
+                    bchan = echan - indx2
+
+                    nchan = len(bchan)
+
+                    for k in range(nchan):
+
+                        flags[ib][j].bchan.append(bchan[k])
+                        flags[ib][j].echan.append(echan[k]-1)
+
+                        flags[ib][j].btime.append(t-0.25/86400.0)
+                        flags[ib][j].etime.append(t+0.25/86400.0)
+                    
+
+        self.status.SetLabel('Writing flag table')
+
+        self.write_flag_table(flags)
+
+        self.status.SetLabel('Done')
+
+
+
+    def write_flag_table(self,flags,flg_dir=''):
+        """Append flags into new FG fits file"""
+
+        imdata = np.zeros((1,1,1,8,512,4,3))
+        pnames = ['UU---SIN','VV---SIN','WW---SIN',
+                  'DATE','DATE','BASELINE','SOURCE',
+                  'FREQSEL','INTTIM','CORR-ID']
+        pdata = [0.,0.,0.,uv.obs_JD,0.,0.,0.,0.,0.,0.]
+        
+        gdata = fits.GroupData(imdata,parnames=pnames,
+                               pardata=pdata,bitpix=-32)
+        
+        prihdu = fits.GroupsHDU(gdata)
+
+        prihdu.header.set('BLOCKED',value=True,comment='Tape may be blocked')
+        prihdu.header.set('OBJECT',value=uv.source,comment='Source name')
+        prihdu.header.set('TELESCOP',value='e-MERLIN',comment=' ')
+        prihdu.header.set('INSTRUME',value='VLBA',comment=' ')
+        prihdu.header.set('OBSERVER',value='Calibrat',comment=' ')
+        prihdu.header.set('DATE-OBS',value=uv.obs_date_str,
+                   comment='Obs start date YYYY-MM-DD')
+
+        prihdu.header.set('BSCALE',value=1.0E0,
+                   comment='REAL = TAPE * BSCALE + BZERO')
+        prihdu.header.set('BZERO',value=0.0E0,comment=' ')
+        prihdu.header.set('BUNIT',value='UNCALIB',comment='Units of flux')
+
+        prihdu.header.set('EQUINOX',value=2.0E3,comment='Epoch of RA DEC')
+        prihdu.header.set('ALTRPIX',value=1.0E+0,
+                   comment='Altenate FREQ/VEL ref pixel')
+        
+        prihdu.header.set('OBSRA',value=uv.obs_RA,
+                    comment='Antenna pointing RA')
+        prihdu.header.set('OBSDEC',value=uv.obs_DEC,
+                    comment='Antenna pointing DEC')
+    
+        prihdu.header.set('CRVAL2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA2',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL3',value=-1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT3',value=-1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX3',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA3',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL4',value=uv.freq,comment=' ') 
+        prihdu.header.set('CDELT4',value=uv.dfrq,comment=' ') 
+        prihdu.header.set('CRPIX4',value=uv.pfrq,comment=' ') 
+        prihdu.header.set('CROTA4',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA5',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL6',value=uv.obs_RA,comment=' ') 
+        prihdu.header.set('CDELT6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA6',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL7',value=uv.obs_DEC,comment=' ') 
+        prihdu.header.set('CDELT7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA7',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL1',value=1./uv.freq,comment=' ') 
+        prihdu.header.set('PZERO1',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL2',value=1./uv.freq,comment=' ') 
+        prihdu.header.set('PZERO2',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL3',value=1./uv.freq,comment=' ') 
+        prihdu.header.set('PZERO2',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL4',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO3',value=uv.obs_JD,comment=' ') 
+
+        prihdu.header.set('PSCAL5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO4',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO6',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO7',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL8',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO8',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL9',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO9',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL10',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO10',value=0.0E+0,comment=' ') 
+
+        # Initialise with flagging Lovell-Mk2
+
+        src = [0]
+        subary =[0]
+        frqid = [-1]
+        ifs = [[1,8]]
+        chans = [[1,0]]
+        pflags = [[1,1,1,1]]
+        reasons = ['Lovell - Mk2 baseline']
+        ants = [[1,2]]
+        timrng = [[0.,9999.]]
+
+        # Add IF bounaries +-30 chans
+
+        for i in range(8):
+            src.append(0)
+            subary.append(0)
+            frqid.append(-1)
+            ifs.append([i,i])
+            chans.append([1,30])
+            pflags.append([1,1,1,1])
+            ants.append([0,0])
+            timrng.append([0.,9999.])
+            reasons.append('Lower IF edge')
+
+            src.append(0)
+            subary.append(0)
+            frqid.append(-1)
+            ifs.append([i,i])
+            chans.append([480,512])
+            pflags.append([1,1,1,1])
+            ants.append([0,0])
+            timrng.append([0.,9999.])
+            reasons.append('Upper IF edge')
+
+        # Add dropouts if any
+
+        for i in range(len(uv.bl)):
+            a1,a2 = uv.base_name[uv.bl[i]]
+            ant1 = RFI.ant_ID[a1]
+            ant2 = RFI.ant_ID[a2]
+            ix = np.where(uv.dflg[i]==0)[0]
+            blocks = ix-np.arange(len(ix))
+            indx = np.unique(blocks)
+
+            prek = 0
+            for k in indx:
+                dk = len(np.where(blocks==k)[0])
+                ik = k+prek
+                src.append(0)
+                subary.append(0)
+                frqid.append(-1)
+                ifs.append([1,8])
+                chans.append([1,0])
+                pflags.append([1,1,1,1])
+                reasons.append('Dropout')
+                ants.append([ant1,ant2])
+                t1 = uv.start_time+uv.vtim[i][ik]*uv.dt
+                t2 = uv.start_time+(uv.vtim[i][ik+dk-1]+1)*uv.dt
+                timrng.append([t1,t2])
+                uv.dflg[i][ik:ik+dk,0] = 1  # Clear so not repeated
+
+                prek += dk
+
+
+        for i in range(len(uv.bl)):
+          a1,a2 = uv.base_name[uv.bl[i]]
+          ant1 = RFI.ant_ID[a1]
+          ant2 = RFI.ant_ID[a2]
+          print i, a1,a2,ant1,ant2
+          for j in range(8):
+              nflag = len(flags[i][j].bchan)
+              print nflag
+              for k in range(nflag):
+                src.append(0)
+                subary.append(0)
+                frqid.append(-1)
+                ifs.append([j+1,j+1])
+                bchan = flags[i][j].bchan[k]+31
+                echan = flags[i][j].echan[k]+31
+#                print bchan,echan
+                chans.append([bchan,echan])
+                pflags.append([1,1,1,1])
+                reasons.append('RFI')
+                ants.append([ant1,ant2])
+                t1 = flags[i][j].btime[k]
+                t2 = flags[i][j].etime[k]
+                timrng.append([t1,t2])
+
+
+        print len(src)
+
+        col1 = fits.Column(name='SOURCE',format='1J',unit=' ',
+                           array=src)
+        col2 = fits.Column(name='SUBARRAY',format='1J',unit=' ',
+                           array=subary)
+        col3 = fits.Column(name='FREQ ID',format='1J',unit=' ',
+                           array=frqid)
+        col4 = fits.Column(name='ANTS',format='2J',unit=' ',
+                           array=ants)
+        col5 = fits.Column(name='TIME RANGE',format='2E',
+                           unit='DAYS',array=timrng)
+        col6 = fits.Column(name='IFS',format='2J',unit=' ',
+                           array=ifs)
+        col7 = fits.Column(name='CHANS',format='2J',unit=' ',
+                           array=chans)
+        col8 = fits.Column(name='PFLAGS',format='4X',unit=' ',
+                           array=pflags)
+        col9 = fits.Column(name='REASON',format='24A',unit=' ',
+                           array=reasons)
+
+        cols = fits.ColDefs([col1,col2,col3,col4,col5,col6,col7,col8,col9])
+        
+        fg_hdu = fits.new_table(cols) 
+        fg_hdu.header.set('EXTNAME',value='AIPS FG',
+                          comment='AIPS table file')
+        fg_hdu.header.set('EXTVER',value=1,
+                          comment='Version number of table')
+
+        hdulist = fits.HDUList([prihdu,fg_hdu])
+
+        outfile = flg_dir+'Flags_%s.fits' % uv.source
+
+        hdulist.writeto(outfile)
+
+
 
 class Controls():
     def __init__(self,parent):
@@ -274,6 +601,7 @@ class RFI_Window(wx.Window):
 
         nbas = len(uv.amp)        
         self.amp_thres = np.zeros(nbas,'f')
+        self.amp_thres_max = np.zeros((nbas,2),'f')
         self.rms_thres = np.zeros(nbas,'f')
         self.dropout_thres = np.zeros(nbas,'f')
         self.pol = 0
@@ -395,6 +723,9 @@ class RFI_Window(wx.Window):
         med_amp_rr = self.clean_amp[0]
         med_amp_ll = self.clean_amp[1]
 
+        self.amp_thres_max[bl,0] = self.amp_thres[bl]*med_amp_rr
+        self.amp_thres_max[bl,1] = self.amp_thres[bl]*med_amp_ll
+
         uv.flg[bl][:,:] *= np.where(uv.amp[bl][:,:,0]/med_amp_rr>self.amp_thres[bl],0,1)
         uv.flg[bl][:,:] *= np.where(uv.amp[bl][:,:,1]/med_amp_ll>self.amp_thres[bl],0,1)
 
@@ -405,6 +736,27 @@ class RFI_Window(wx.Window):
         uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,0]/med_rms_rr>self.rms_thres[bl],0,1)
         uv.flg[bl][:,:] *= np.where(uv.err[bl][:,:,1]/med_rms_ll>self.rms_thres[bl],0,1)
 
+    def apply_IF_thres(self,IF_thres):
+        
+        bl = self.baseline
+        pol = self.pol
+
+        # Clear old flags and apply dropout flag
+        uv.flg[bl][:,:] = 1
+        uv.flg[bl][:,:] *= uv.dflg[bl]
+        
+        IF = []
+        for i in np.arange(8):
+            a = IF_thres[i,pol,bl,:]
+            IF.append(np.polyval(a,np.arange(451)))
+
+        IF = np.concatenate(IF)
+        IF = np.where(IF>self.amp_thres_max[bl,pol],self.amp_thres_max[bl,pol],IF)
+
+        uv.flg[bl][:,:] *= np.where(uv.amp[bl][:,:,pol]-IF>0,0,1)
+
+        self.draw()
+        self.repaint()
 
 
     def draw(self):
@@ -451,7 +803,7 @@ class BPass_Window(wx.Window):
         self.pol = 0
 
         nbas = len(uv.amp)        
-        self.IF_thres = np.zeros((8,2,nbas),'f')
+        self.IF_thres = np.zeros((8,2,nbas,2),'f')
 
         self.figure = Figure(figsize=(4,3),dpi=100)
         self.canvas = FigureCanvasWxAgg(self,-1,self.figure)
@@ -462,21 +814,16 @@ class BPass_Window(wx.Window):
 
         self.draw()
 
-    def draw(self):
-        bl = self.baseline
-        pol = self.pol
-
-        print "BP ",bl
-
+    def get_IF_thres(self,bl,pol):
         amp = np.transpose(uv.amp[bl][:,:,pol])
         msk = np.transpose(uv.flg[bl])
         amp = ma.array(amp,mask=(1-msk))
+
         medfilt = ma.median(amp,axis=1)
+
         w = ma.std(amp,axis=1)
         w = np.where(w==0,1e4,w)
         w = 1/(w+1e-2)
-
-        print np.median(w)
 
         bp = []
         IF = []
@@ -491,11 +838,11 @@ class BPass_Window(wx.Window):
                 a = np.polyfit(xf,medfilt[xf+i*451],1,w=w[xf+i*451])
 
                 if i==0:
-                    a[1] = a[1]*3 + 2.5e-4 
+                    a[1] = a[1]*1.5 + 2.5e-4 
                 else:
                     a[1] = a[1]*1.5 + 2.5e-4 
 
-                self.IF_thres[i,:,bl] = a
+                self.IF_thres[i,pol,bl,:] = a
  
                 IF.append(np.polyval(a,np.arange(451)))
                
@@ -510,28 +857,43 @@ class BPass_Window(wx.Window):
                 self.IF_thres[i,1,bl] = ma.median(medfilt[xf+i*451])*3.0
                 self.IF_thres[i,0,bl] = 0
                 IF.append(np.ones(451)*self.IF_thres[i,1,bl])
- 
-            print i,self.IF_thres[i,:,bl]
-                
-                
-
+                 
         bp = np.concatenate(bp)
         IF = np.concatenate(IF)
 
+        return bp, IF, amp, medfilt 
+
+    def draw(self):
+        bl = self.baseline
+        pol = self.pol
+
+        print "BP ",bl
+
+        bp = [None,None]
+        IF = [None,None]
+        amp = [None,None]
+        medfilt = [None,None]
+        
+        bp[0],IF[0],amp[0],medfilt[0] = self.get_IF_thres(bl,0)
+        bp[1],IF[1],amp[1],medfilt[1] = self.get_IF_thres(bl,1)
+
+        msk = np.transpose(uv.flg[bl])
+
+
         if not hasattr(self,'subplot'):
             self.subplot = self.figure.add_subplot(111)
-            self.imshow = self.subplot.plot(amp*msk,',b')
-            self.imshow = self.subplot.plot(medfilt,'-g')
-            self.imshow = self.subplot.plot(bp,'-r')
-            self.imshow = self.subplot.plot(IF,'-k')
-#            self.imshow = self.subplot.plot(bp*1.25,'--r')
+            self.imshow = self.subplot.plot(amp[pol]*msk,',b')
+            self.imshow = self.subplot.plot(medfilt[pol],'-g')
+            self.imshow = self.subplot.plot(bp[pol],'-r')
+            self.imshow = self.subplot.plot(IF[pol],'-k')
+#            self.imshow = self.subplot.plot(IF_max,'--r')
 #            self.imshow = self.subplot.plot(bp*.75,'--r')
         else:
             self.subplot.clear()
-            self.imshow = self.subplot.plot(amp*msk,',b')
-            self.imshow = self.subplot.plot(medfilt,'-g')
-            self.imshow = self.subplot.plot(bp,'-r')
-            self.imshow = self.subplot.plot(IF,'-k')
+            self.imshow = self.subplot.plot(amp[pol]*msk,',b')
+            self.imshow = self.subplot.plot(medfilt[pol],'-g')
+            self.imshow = self.subplot.plot(bp[pol],'-r')
+            self.imshow = self.subplot.plot(IF[pol],'-k')
 #            self.imshow = self.subplot.plot(bp*1.25,'--r')
 #            self.imshow = self.subplot.plot(bp*.75,'--r')
 
