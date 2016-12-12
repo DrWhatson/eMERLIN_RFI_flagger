@@ -64,6 +64,11 @@ class Baseline_Panel(wx.Panel):
         if bl<0:
             bl = nbas-1
 
+        self.refresh_baseline(bl)
+#        tpanel.apply_IF_thres(e)
+
+    def refresh_baseline(self,bl):
+
         rfi_window = self.parent.rfi_Window
         tpanel = self.parent.controls.threshold_panel
 
@@ -98,6 +103,9 @@ class Baseline_Panel(wx.Panel):
             pol=1
 
         self.rfi_Window.set_polarization(pol)
+        bp_window.set_pol(pol)
+        bl = self.rfi_Window.baseline
+        self.refresh_baseline(bl)
 
         
 class Threshold_Panel(wx.Panel):
@@ -109,7 +117,7 @@ class Threshold_Panel(wx.Panel):
         self.heading = wx.StaticText(self,label='Threshold levels',pos=(5,0))
  
         self.amp_thres_text = wx.StaticText(self,label="Amp threshold", pos=(5,30))
-        self.amp_thres_entry = wx.TextCtrl(self,value="2.20",pos=(110,30),style=wx.TE_PROCESS_ENTER)
+        self.amp_thres_entry = wx.TextCtrl(self,value="3.00",pos=(110,30),style=wx.TE_PROCESS_ENTER)
         self.amp_thres_entry.Bind(wx.EVT_TEXT_ENTER,self.set_amp_thres)
 
         self.rms_thres_text = wx.StaticText(self,label="RMS threshold", pos=(5,60))
@@ -223,7 +231,7 @@ class Flags_Panel(wx.Panel):
 
         self.heading = wx.StaticText(self,label='Write Flags',pos=(20,0))
         self.write_button = wx.Button(self,-1,'Go',pos=(0,30),size=(100,35))
-        self.write_button.Bind(wx.EVT_BUTTON,self.write_new_flags)
+        self.write_button.Bind(wx.EVT_BUTTON,self.write_flags)
         self.status = wx.StaticText(self,label='       ',pos=(10,70))
 
     def write_flags(self,evt):
@@ -234,6 +242,18 @@ class Flags_Panel(wx.Panel):
     def write_new_flags(self,evt):
         self.status.SetLabel('Re-reading data')
                 
+        # Initialise with flagging Lovell-Mk2
+
+        src = [0]
+        subary =[0]
+        frqid = [-1]
+        ifs = [[1,8]]
+        chans = [[1,0]]
+        pflags = [[1,1,1,1]]
+        reasons = ['Lovell - Mk2 baseline']
+        ants = [[1,2]]
+        timrng = [[0.,9999.]]
+
         ipos = np.zeros(uv.nbas,'i')
         itot = 0
 
@@ -253,10 +273,21 @@ class Flags_Panel(wx.Panel):
                 IF_clip[j,:,1,i] = np.polyval(a,np.arange(451))
                 IF_clip[j,:,1,i] = np.where(IF_clip[j,:,1,i]>amp_max,amp_max,IF_clip[j,:,1,i])
                 
+        IF_clip.shape = (8*451,2,21) # Flatten IFs into bandpass
 
+        cflg = []
+        for i in range(21):
+            cflg.append(np.zeros((100,451*8))) # Temporary flag table per fits extension
 
         for io in np.arange(uv.nobs):
-            nvis_obs = uv.hdu[5+io].header['NAXIS2']  
+            print "Doing block %i of %i" % (io,uv.nobs-1)
+
+            nvis_obs = uv.hdu[5+io].header['NAXIS2']
+            t0 = uv.hdu[5+io].data.TIME[0] + uv.hdu[5+io].data.DATE[0]
+
+            for i in range(21): 
+                cflg[i][...] = 1 
+
             for i in np.arange(nvis_obs):
                 itot += 1  
                 baseline = uv.hdu[5+io].data.BASELINE[i]  
@@ -277,50 +308,66 @@ class Flags_Panel(wx.Panel):
                     continue
 
                 ib = (2*uv.nant+2-a1)*(a1-1)/2 + a2 - a1 -1
+                it = int((uv.hdu[io+5].data.TIME[i]+uv.hdu[5+io].data.DATE[i]-t0)*86400 + .5)
 
-                t = uv.hdu[io+5].data.TIME[i]+uv.hdu[io+5].data.DATE[i]
-                t -= uv.start_date
                 flux = uv.hdu[io+5].data.FLUX[i,:]
                 flux.shape = (8,512,4,2)
                 a = np.sqrt(flux[:,30:-31,:2,0]**2+flux[:,30:-31,:2,1]**2)
+                a = a.reshape(uv.nif*451,2)
 
                 # Get common flags
-                flg  = np.where(a[:,:,0]>IF_clip[:,:,0,ib],0,1)
-                flg *= np.where(a[:,:,1]>IF_clip[:,:,1,ib],0,1)
+                flg  = np.where(a[:,0]>IF_clip[:,0,ib],0,1)
+                flg *= np.where(a[:,1]>IF_clip[:,1,ib],0,1)
+ 
+                cflg[ib][it,:] = flg
 
-                # Loop over IFs looking for blocks of RFI
-                for j in range(8):
-                    ix = np.where(flg[j,:]==0)[0]
-                    if len(ix)==0:
-                        continue
-                    blk = ix - range(len(ix)) 
-                    indx,indx2 = np.unique(blk,return_index=1)  # Start channels of RFI
-                    indx2[:-1] = indx2[1:]
-                    indx2[-1] = len(ix)
-                    echan = indx + indx2  
-                    indx2[1:] = indx2[1:] - indx2[:-1]
-                    bchan = echan - indx2
 
-                    nchan = len(bchan)
+            for i in range(len(uv.bl)):         # Process block into flags 
+                print "Baseline %i" % i
+                a1,a2 = uv.base_name[uv.bl[i]]
+                ant1 = RFI.ant_ID[a1]
+                ant2 = RFI.ant_ID[a2]
+        
+                print " Fraction flagged %f" % (np.sum(cflg[i])/3609./70.)
 
-                    for k in range(nchan):
+                ix,iy = np.where(np.transpose(cflg[i])==0)  
+#                ix,iy = np.where(cflg[i]==0)  
+                ixu = np.unique(ix)  
 
-                        flags[ib][j].bchan.append(bchan[k])
-                        flags[ib][j].echan.append(echan[k]-1)
+                print "ixu %i" % len(ixu)
+                for j in ixu:
+                    col = np.where(ix==j)[0]
+                    blocks = iy[col]-range(len(col))
+                    indx = np.unique(blocks)
+                    prek = 0
+#                    print "      indx %i" % len(indx)
+                    for k in indx:
+                        dk = len(np.where(blocks==k)[0])
+                        ik = k+prek
+                        src.append(0)
+                        subary.append(1)
+                        frqid.append(1)
+                        ifs.append([j/451+1,j/451+1])
+                        chan = j%451
+                        chans.append([chan+31,chan+31])
+                        pflags.append([1,1,1,1])
+                        reasons.append('RFI')
+                        ants.append([ant1,ant2])
+                        t1 = t0 + (ik-0.5)/86400. - uv.start_date
+                        t2 = t0 + (ik+dk+0.5)/86400. -uv.start_date                 
+                        timrng.append([t1,t2])
+                        prek += dk   
 
-                        flags[ib][j].btime.append(t-0.25/86400.0)
-                        flags[ib][j].etime.append(t+0.25/86400.0)
-                    
 
         self.status.SetLabel('Writing flag table')
 
-        self.write_flag_table(flags)
+        self.write_flag_table(src,subary,frqid,ifs,chans,pflags,reasons,ants,timrng)
 
         self.status.SetLabel('Done')
 
 
 
-    def write_flag_table(self,flags,flg_dir=''):
+    def write_flag_table(self,src,subary,frqid,ifs,chans,pflags,reasons,ants,timrng,flg_dir=''):
         """Append flags into new FG fits file"""
 
         imdata = np.zeros((1,1,1,8,512,4,3))
@@ -416,17 +463,6 @@ class Flags_Panel(wx.Panel):
         prihdu.header.set('PSCAL10',value=1.0E+0,comment=' ') 
         prihdu.header.set('PZERO10',value=0.0E+0,comment=' ') 
 
-        # Initialise with flagging Lovell-Mk2
-
-        src = [0]
-        subary =[0]
-        frqid = [-1]
-        ifs = [[1,8]]
-        chans = [[1,0]]
-        pflags = [[1,1,1,1]]
-        reasons = ['Lovell - Mk2 baseline']
-        ants = [[1,2]]
-        timrng = [[0.,9999.]]
 
         # Add IF bounaries +-30 chans
 
@@ -479,31 +515,6 @@ class Flags_Panel(wx.Panel):
                 uv.dflg[i][ik:ik+dk,0] = 1  # Clear so not repeated
 
                 prek += dk
-
-
-        for i in range(len(uv.bl)):
-          a1,a2 = uv.base_name[uv.bl[i]]
-          ant1 = RFI.ant_ID[a1]
-          ant2 = RFI.ant_ID[a2]
-          print i, a1,a2,ant1,ant2
-          for j in range(8):
-              nflag = len(flags[i][j].bchan)
-              print nflag
-              for k in range(nflag):
-                src.append(0)
-                subary.append(0)
-                frqid.append(-1)
-                ifs.append([j+1,j+1])
-                bchan = flags[i][j].bchan[k]+31
-                echan = flags[i][j].echan[k]+31
-#                print bchan,echan
-                chans.append([bchan,echan])
-                pflags.append([1,1,1,1])
-                reasons.append('RFI')
-                ants.append([ant1,ant2])
-                t1 = flags[i][j].btime[k]
-                t2 = flags[i][j].etime[k]
-                timrng.append([t1,t2])
 
 
         print len(src)
@@ -659,7 +670,6 @@ class RFI_Window(wx.Window):
         amp0, thres0 = self.get_clean_amp(pol=0)
         amp1, thres1 = self.get_clean_amp(pol=1)
 
-
         self.clean_amp = (thres0, thres1)
 
         uv.dflg[bl] = np.where((amp0[:,np.newaxis]<thres0/thres),0,1) 
@@ -680,8 +690,8 @@ class RFI_Window(wx.Window):
 
     def set_polarization(self,pol):
         self.pol = pol
-        self.draw()
-        self.repaint()
+#        self.draw()
+#        self.repaint()
 
     def get_amp_threshold(self,amp_thres):
         self.amp_thres[self.baseline] = amp_thres
@@ -838,9 +848,11 @@ class BPass_Window(wx.Window):
                 a = np.polyfit(xf,medfilt[xf+i*451],1,w=w[xf+i*451])
 
                 if i==0:
-                    a[1] = a[1]*1.5 + 2.5e-4 
+                    a[1] = a[1]*1.8 + 1.0e-4 #3.0e-4 
+                elif i==7:
+                    a[1] = a[1]*1.6 + 7.0e-5 #3.0e-4 
                 else:
-                    a[1] = a[1]*1.5 + 2.5e-4 
+                    a[1] = a[1]*1.4 + 5.0e-5 #3.0e-4 
 
                 self.IF_thres[i,pol,bl,:] = a
  
@@ -856,7 +868,7 @@ class BPass_Window(wx.Window):
                 bp.append(np.ones(451)*spl)
                 self.IF_thres[i,1,bl] = ma.median(medfilt[xf+i*451])*3.0
                 self.IF_thres[i,0,bl] = 0
-                IF.append(np.ones(451)*self.IF_thres[i,1,bl])
+                IF.append(np.ones(451)*self.IF_thres[i,pol,bl])
                  
         bp = np.concatenate(bp)
         IF = np.concatenate(IF)
@@ -902,6 +914,9 @@ class BPass_Window(wx.Window):
         self.draw()
         self.repaint()
 
+    def set_pol(self,pol):
+        self.pol = pol
+
 
     def repaint(self):
         self.canvas.draw()
@@ -911,8 +926,9 @@ class BPass_Window(wx.Window):
 class App(wx.App):
     def OnInit(self):
 
-        self.frame1 = RFI_Frame(parent=None,title='RFI removal tool',size=(1400,850))
+        self.frame1 = RFI_Frame(parent=None,title='RFI removal tool',size=(1400,700))
         self.frame1.Show()
+        self.frame1.controls.baseline_panel.refresh_baseline(bl)
         return True
 
 if __name__=='__main__':
@@ -920,7 +936,8 @@ if __name__=='__main__':
     fits_file = sys.argv[1]
 
     uv = RFI.read_fits(fits_file,progress=1)
-    bl = 0
+    bl = 1
+    start = True
 
     app = App()
     app.MainLoop()

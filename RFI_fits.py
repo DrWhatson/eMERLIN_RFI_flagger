@@ -1,6 +1,6 @@
 import numpy as np
 import pylab as plt
-import smooth
+#import smooth
 import pyfits as fits
 import sys
 import jdcal
