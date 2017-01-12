@@ -1,15 +1,28 @@
 import numpy as np
 import pylab as plt
-import smooth
+#import smooth
 import pyfits as fits
 import sys
+import jdcal
+import cPickle as pic
 
-ant_ID = {'LO':1, 'MK2':2, 'KN':5, 'DE':6, 'PI':7, 'DA':8, 'CM':9}
-ant_no = {1:1, 2:2, 5:3, 6:4, 7:5, 8:6, 9:7}
-ant_name = ['LO','MK2','KN','DE','PI','DA','CM']
+ant_ID = {'MK2':2, 'KN':5, 'DE':6, 'PI':7, 'DA':8, 'CM':9}
+#ant_no = {1:1, 2:2, 5:3, 6:4, 7:5, 8:6, 9:7}
+ant_no = {2:1, 5:2, 6:3, 7:4, 8:5}
+ant_name = ['MK2','KN','DE','PI','DA','CM']
+
+# Clean bits of spectrum
+cb = [(1000,1300),(1400,1650),(2200,2500),(3000,3150),(3250,3400)] 
+
+cb_index = []
+for i in np.arange(len(cb)):
+    cb_index.append(np.arange(cb[i][0],cb[i][1]))
+
+cb_index = np.concatenate(cb_index)
+
 
 class VisData:
-    """Class to store visiility data for RFI module"""
+    """Class to store visibility data for RFI module"""
     def __init__(self,hdu):
         self.hdu = hdu
 
@@ -24,6 +37,15 @@ class VisData:
 
     def get_start_time(self):
         self.start_time = self.hdu[5].data.TIME[0]
+        self.start_date = self.hdu[5].data.DATE[0]
+        self.obs_date_str = self.hdu[5].header['DATE-OBS']
+        self.obs_RA = self.hdu[5].header['CRVAL5']
+        self.obs_DEC = self.hdu[5].header['CRVAL6']
+
+        yr,mn,dy = self.obs_date_str.split('-')
+        self.obs_JD = sum(jdcal.gcal2jd(yr,mn,dy))
+
+        self.source = self.hdu[2].data.SOURCE[0].strip()
 
     def get_freq(self):
         self.freq = self.hdu[5].header['REF_FREQ']
@@ -42,45 +64,237 @@ class VisData:
         for i in range(len(self.flg)):
             self.flg[i][:,:] = 1
 
-    def write_flag_table(self):
+    def write_flag_table(self,flg_dir=''):
         """Append flags into new FG fits file"""
 
-        hdulist = []
+        imdata = np.zeros((1,1,1,8,512,4,3))
+        pnames = ['UU---SIN','VV---SIN','WW---SIN',
+                  'DATE','DATE','BASELINE','SOURCE',
+                  'FREQSEL','INTTIM','CORR-ID']
+        pdata = [0.,0.,0.,self.obs_JD,0.,0.,0.,0.,0.,0.]
+        
+        gdata = fits.GroupData(imdata,parnames=pnames,
+                               pardata=pdata,bitpix=-32)
+        
+        prihdu = fits.GroupsHDU(gdata)
 
-        prihdu = fits.PrimaryHDU()
+        prihdu.header.set('BLOCKED',value=True,comment='Tape may be blocked')
+        prihdu.header.set('OBJECT',value=self.source,comment='Source name')
+        prihdu.header.set('TELESCOP',value='e-MERLIN',comment=' ')
+        prihdu.header.set('INSTRUME',value='VLBA',comment=' ')
+        prihdu.header.set('OBSERVER',value='Calibrat',comment=' ')
+        prihdu.header.set('DATE-OBS',value=self.obs_date_str,
+                   comment='Obs start date YYYY-MM-DD')
 
-        hdulist.append(prihdu)
+        prihdu.header.set('BSCALE',value=1.0E0,
+                   comment='REAL = TAPE * BSCALE + BZERO')
+        prihdu.header.set('BZERO',value=0.0E0,comment=' ')
+        prihdu.header.set('BUNIT',value='UNCALIB',comment='Units of flux')
+
+        prihdu.header.set('EQUINOX',value=2.0E3,comment='Epoch of RA DEC')
+        prihdu.header.set('ALTRPIX',value=1.0E+0,
+                   comment='Altenate FREQ/VEL ref pixel')
+        
+        prihdu.header.set('OBSRA',value=self.obs_RA,
+                    comment='Antenna pointing RA')
+        prihdu.header.set('OBSDEC',value=self.obs_DEC,
+                    comment='Antenna pointing DEC')
+    
+        prihdu.header.set('CRVAL2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX2',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA2',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL3',value=-1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT3',value=-1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX3',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA3',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL4',value=self.freq,comment=' ') 
+        prihdu.header.set('CDELT4',value=self.dfrq,comment=' ') 
+        prihdu.header.set('CRPIX4',value=self.pfrq,comment=' ') 
+        prihdu.header.set('CROTA4',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CDELT5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA5',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL6',value=self.obs_RA,comment=' ') 
+        prihdu.header.set('CDELT6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA6',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('CRVAL7',value=self.obs_DEC,comment=' ') 
+        prihdu.header.set('CDELT7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CRPIX7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('CROTA7',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL1',value=1./self.freq,comment=' ') 
+        prihdu.header.set('PZERO1',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL2',value=1./self.freq,comment=' ') 
+        prihdu.header.set('PZERO2',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL3',value=1./self.freq,comment=' ') 
+        prihdu.header.set('PZERO2',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL4',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO3',value=self.obs_JD,comment=' ') 
+
+        prihdu.header.set('PSCAL5',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO4',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL6',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO6',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL7',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO7',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL8',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO8',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL9',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO9',value=0.0E+0,comment=' ') 
+
+        prihdu.header.set('PSCAL10',value=1.0E+0,comment=' ') 
+        prihdu.header.set('PZERO10',value=0.0E+0,comment=' ') 
+
+        # Initialise with flagging Lovell-Mk2
+
+        src = [0]
+        subary =[0]
+        frqid = [-1]
+        ifs = [[1,8]]
+        chans = [[1,0]]
+        pflags = [[1,1,1,1]]
+        reasons = ['Lovell - Mk2 baseline']
+        ants = [[1,2]]
+        timrng = [[0.,9999.]]
+
+        # Add IF bounaries +-30 chans
+
+        for i in range(8):
+            src.append(0)
+            subary.append(0)
+            frqid.append(-1)
+            ifs.append([i,i])
+            chans.append([1,30])
+            pflags.append([1,1,1,1])
+            ants.append([0,0])
+            timrng.append([0.,9999.])
+            reasons.append('Lower IF edge')
+
+            src.append(0)
+            subary.append(0)
+            frqid.append(-1)
+            ifs.append([i,i])
+            chans.append([480,512])
+            pflags.append([1,1,1,1])
+            ants.append([0,0])
+            timrng.append([0.,9999.])
+            reasons.append('Upper IF edge')
+
+        # Add dropouts if any
 
         for i in range(len(self.bl)):
+            a1,a2 = self.base_name[self.bl[i]]
+            ant1 = ant_ID[a1]
+            ant2 = ant_ID[a2]
+            ix = np.where(self.dflg[i]==0)[0]
+            blocks = ix-np.arange(len(ix))
+            indx = np.unique(blocks)
 
-          print i,self.vtim[i].shape,self.flg[i].shape  
+            prek = 0
+            for k in indx:
+                dk = len(np.where(blocks==k)[0])
+                ik = k+prek
+                src.append(0)
+                subary.append(0)
+                frqid.append(-1)
+                ifs.append([1,8])
+                chans.append([1,0])
+                pflags.append([1,1,1,1])
+                reasons.append('Dropout')
+                ants.append([ant1,ant2])
+                t1 = self.start_time+self.vtim[i][ik]*self.dt
+                t2 = self.start_time+(self.vtim[i][ik+dk-1]+1)*self.dt
+                timrng.append([t1,t2])
+                self.dflg[i][ik:ik+dk,0] = 1  # Clear so not repeated
 
-          col1 = fits.Column(name='TIME',format='D',array=self.vtim[i])
-          col2 = fits.Column(name='FLAG',format='1024B',array=self.flg[i])
+                prek += dk
 
-          cols = fits.ColDefs([col1,col2])
 
-#          hdu = fits.BinTableHDU.from_columns(cols) # new version
-          hdu = fits.new_table(cols)
-
+        for i in range(len(self.bl)):
           a1,a2 = self.base_name[self.bl[i]]
           ant1 = ant_ID[a1]
           ant2 = ant_ID[a2]
+          print i, a1,a2,ant1,ant2
+          if self.amp[i].shape[0]==0:
+            continue
 
-          hdu.header['StartT'] = self.start_time
-          hdu.header['DeltaT'] = self.dt
-          hdu.header['ANT1'] = ant1
-          hdu.header['ANT2'] = ant2
-          hdu.header['A1'] = a1
-          hdu.header['A2'] = a2
+          ix,iy = np.where(np.transpose(self.flg[i])==0)  
+          ixu = np.unique(ix)  
 
-          hdulist.append(hdu)
+          for j in ixu:
+            col = np.where(ix==j)[0]
+            blocks = iy[col]-range(len(col))
+            indx = np.unique(blocks)
+            prek = 0
+            for k in indx:
+                dk = len(np.where(blocks==k)[0])
+                ik = k+prek
+                src.append(0)
+                subary.append(1)
+                frqid.append(1)
+                ifs.append([j/451+1,j/451+1])
+                chan = j%451
+                chans.append([chan+31,chan+31])
+                pflags.append([1,1,1,1])
+                reasons.append('RFI')
+                ants.append([ant1,ant2])
+                t1 = self.start_time+self.vtim[i][ik]*self.dt
+                t2 = self.start_time+(self.vtim[i][ik+dk-1]+1)*self.dt
+                timrng.append([t1,t2])
+                prek += dk
 
-        hdulist = fits.HDUList(hdulist)
 
-        hdulist.writeto('Test_Flags.fits')
+        print len(src)
 
-def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
+        col1 = fits.Column(name='SOURCE',format='1J',unit=' ',
+                           array=src)
+        col2 = fits.Column(name='SUBARRAY',format='1J',unit=' ',
+                           array=subary)
+        col3 = fits.Column(name='FREQ ID',format='1J',unit=' ',
+                           array=frqid)
+        col4 = fits.Column(name='ANTS',format='2J',unit=' ',
+                           array=ants)
+        col5 = fits.Column(name='TIME RANGE',format='2E',
+                           unit='DAYS',array=timrng)
+        col6 = fits.Column(name='IFS',format='2J',unit=' ',
+                           array=ifs)
+        col7 = fits.Column(name='CHANS',format='2J',unit=' ',
+                           array=chans)
+        col8 = fits.Column(name='PFLAGS',format='4X',unit=' ',
+                           array=pflags)
+        col9 = fits.Column(name='REASON',format='24A',unit=' ',
+                           array=reasons)
+
+        cols = fits.ColDefs([col1,col2,col3,col4,col5,col6,col7,col8,col9])
+        
+        fg_hdu = fits.new_table(cols) 
+        fg_hdu.header.set('EXTNAME',value='AIPS FG',
+                          comment='AIPS table file')
+        fg_hdu.header.set('EXTVER',value=1,
+                          comment='Version number of table')
+
+        hdulist = fits.HDUList([prihdu,fg_hdu])
+
+        outfile = flg_dir+'Flags_%s.fits' % self.source
+
+        hdulist.writeto(outfile)
+
+def read_fits(fits_file, dt=10,progress=False,MAD=0):
 #    """Routine to read given uvdata into a VisData class"""
 
     hdu = fits.open(fits_file)
@@ -89,7 +303,6 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
 
     vd = VisData(hdu)
     vd.src = fits_file
-    vd.dchan = dch
     vd.dt = dt/86400.
     vd.get_nvis()
     vd.get_start_time()
@@ -141,16 +354,20 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
             a1 = ant_no[ant2]
             a2 = ant_no[ant1]
 
+        if ant1==1 and ant2==2:
+            continue
+
         ib = (2*vd.nant+2-a1)*(a1-1)/2 + a2 - a1 -1
 
 #        print i, a1, a2, ib
 
-        t = vd.hdu[io+5].data.TIME[i]
-        it = int((t-vd.start_time)/vd.dt)
+        t = vd.hdu[io+5].data.TIME[i]+vd.hdu[io+5].data.DATE[i]
+        it = int((t-vd.start_time-vd.start_date)/vd.dt)
         flux = vd.hdu[io+5].data.FLUX[i,:]
         flux.shape = (8,512,4,2)
-        a = np.sqrt(flux[:,:,:,0]**2+flux[:,:,:,1]**2)
-        a = a.reshape(vd.nif*vd.nchan/4,4,vd.nstoke).sum(axis=1)
+        a = np.sqrt(flux[:,30:-31,:,0]**2+flux[:,30:-31,:,1]**2)
+
+        a = a.reshape(vd.nif*451,vd.nstoke)
 
         if progress:
           if itot%1000==0:
@@ -159,19 +376,21 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
             sys.stdout.write('\r')
             sys.stdout.write('Loading %s [%-20s] %d%%' % (vd.src,'='*pc5,pc))
             sys.stdout.flush()
+
+#	print 'it,ib=',it,ib,tdic
                            
         if not tdic[ib].has_key(it):
             tdic[ib][it] = ipos[ib]
             vis[ib].append(a)
             vis2[ib].append(a**2)
-            vhit[ib].append(4)
+            vhit[ib].append(1)
             vd.vtim[ib].append(it)
             ipos[ib] += 1
         else:
             ip = tdic[ib][it]
             vis[ib][ip] += a
             vis2[ib][ip] += a**2
-            vhit[ib][ip] += 4
+            vhit[ib][ip] += 1
 
     vd.end_time = vd.hdu[vd.nobs+4].data.TIME[-1]
     vd.nt = int((vd.end_time-vd.start_time)/vd.dt)+1
@@ -186,6 +405,7 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
         vhit[i] = np.array(vhit[i])
         vhit[i] = vhit[i][:,np.newaxis,np.newaxis]
         vd.vtim[i] = np.array(vd.vtim[i])
+        
 
   # For each baseline generate amp and error arrays in visdata
 
@@ -193,6 +413,7 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
     vd.err = []
     vd.bl = []
     vd.flg = []
+    vd.dflg = []
 
     print len(vd.base_ant)
 
@@ -221,9 +442,11 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
         vd.err.append(Avis_err)
 
         vd.flg.append(np.ones(Avis.shape[:2],dtype='b'))
+        vd.dflg.append(np.ones((Avis.shape[0],1),dtype='b'))
 
 
     return vd
+
 
 
 def flag_via_amp(vd,thres=1.5,sig=4,ndx=20):
@@ -301,4 +524,11 @@ def flag_via_rms_median_threshold(vd,thres=2.0):
         med_err = np.median(vd.err[i][ix,iy,j])  
         vd.flg[i] *= np.where((vd.err[i][:,:,j]>med_err*thres),0,1)
 
+def flag_via_clean_bits(vd,thres=0.004):
+    for i in range(len(vd.amp)):
+      for j in range(2):
+        if vd.amp[i].shape[0]==0:
+            continue
+        basoff = np.median(vd.amp[i][:,cb_index,j],axis=0)  
+        vd.flg[i] *= np.where((vd.amp[i][:,:,j]<thres),0,1)
 
