@@ -1,14 +1,15 @@
 import numpy as np
 import pylab as plt
-import smooth
+#import smooth
 import pyfits as fits
 import sys
 import jdcal
 import cPickle as pic
 
-ant_ID = {'LO':1, 'MK2':2, 'KN':5, 'DE':6, 'PI':7, 'DA':8, 'CM':9}
-ant_no = {1:1, 2:2, 5:3, 6:4, 7:5, 8:6, 9:7}
-ant_name = ['LO','MK2','KN','DE','PI','DA','CM']
+ant_ID = {'MK2':2, 'KN':5, 'DE':6, 'PI':7, 'DA':8, 'CM':9}
+#ant_no = {1:1, 2:2, 5:3, 6:4, 7:5, 8:6, 9:7}
+ant_no = {2:1, 5:2, 6:3, 7:4, 8:5}
+ant_name = ['MK2','KN','DE','PI','DA','CM']
 
 # Clean bits of spectrum
 cb = [(1000,1300),(1400,1650),(2200,2500),(3000,3150),(3250,3400)] 
@@ -21,7 +22,7 @@ cb_index = np.concatenate(cb_index)
 
 
 class VisData:
-    """Class to store visiility data for RFI module"""
+    """Class to store visibility data for RFI module"""
     def __init__(self,hdu):
         self.hdu = hdu
 
@@ -44,7 +45,7 @@ class VisData:
         yr,mn,dy = self.obs_date_str.split('-')
         self.obs_JD = sum(jdcal.gcal2jd(yr,mn,dy))
 
-        self.source = self.hdu[2].data.SOURCE[0]
+        self.source = self.hdu[2].data.SOURCE[0].strip()
 
     def get_freq(self):
         self.freq = self.hdu[5].header['REF_FREQ']
@@ -224,7 +225,6 @@ class VisData:
                 prek += dk
 
 
-
         for i in range(len(self.bl)):
           a1,a2 = self.base_name[self.bl[i]]
           ant1 = ant_ID[a1]
@@ -257,14 +257,6 @@ class VisData:
                 t2 = self.start_time+(self.vtim[i][ik+dk-1]+1)*self.dt
                 timrng.append([t1,t2])
                 prek += dk
-
-#          pf = open('Dump_flags_bl04.pic','wb')
-#          pic.dump(self.flg[4],pf)
-#          pic.dump(chans,pf)
-#          pic.dump(timrng,pf)
-#          pic.dump(ifs,pf)
-#          pic.dump(self.vtim[4],pf)
-#          pf.close()
 
 
         print len(src)
@@ -302,7 +294,7 @@ class VisData:
 
         hdulist.writeto(outfile)
 
-def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
+def read_fits(fits_file, dt=10,progress=False,MAD=0):
 #    """Routine to read given uvdata into a VisData class"""
 
     hdu = fits.open(fits_file)
@@ -311,7 +303,6 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
 
     vd = VisData(hdu)
     vd.src = fits_file
-    vd.dchan = dch
     vd.dt = dt/86400.
     vd.get_nvis()
     vd.get_start_time()
@@ -375,7 +366,6 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
         flux = vd.hdu[io+5].data.FLUX[i,:]
         flux.shape = (8,512,4,2)
         a = np.sqrt(flux[:,30:-31,:,0]**2+flux[:,30:-31,:,1]**2)
-#        a = a.reshape(vd.nif*vd.nchan/4,4,vd.nstoke).sum(axis=1)
 
         a = a.reshape(vd.nif*451,vd.nstoke)
 
@@ -386,19 +376,21 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
             sys.stdout.write('\r')
             sys.stdout.write('Loading %s [%-20s] %d%%' % (vd.src,'='*pc5,pc))
             sys.stdout.flush()
+
+#	print 'it,ib=',it,ib,tdic
                            
         if not tdic[ib].has_key(it):
             tdic[ib][it] = ipos[ib]
             vis[ib].append(a)
             vis2[ib].append(a**2)
-            vhit[ib].append(4)
+            vhit[ib].append(1)
             vd.vtim[ib].append(it)
             ipos[ib] += 1
         else:
             ip = tdic[ib][it]
             vis[ib][ip] += a
             vis2[ib][ip] += a**2
-            vhit[ib][ip] += 4
+            vhit[ib][ip] += 1
 
     vd.end_time = vd.hdu[vd.nobs+4].data.TIME[-1]
     vd.nt = int((vd.end_time-vd.start_time)/vd.dt)+1
@@ -413,6 +405,7 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
         vhit[i] = np.array(vhit[i])
         vhit[i] = vhit[i][:,np.newaxis,np.newaxis]
         vd.vtim[i] = np.array(vd.vtim[i])
+        
 
   # For each baseline generate amp and error arrays in visdata
 
@@ -453,6 +446,7 @@ def read_fits(fits_file,dch=4,dt=10,progress=False,MAD=0):
 
 
     return vd
+
 
 
 def flag_via_amp(vd,thres=1.5,sig=4,ndx=20):
